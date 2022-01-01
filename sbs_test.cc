@@ -15,24 +15,31 @@ struct TempKV : virtual public sagitrs::BoundedValue,
   TempKV(const Slice& a, const Slice& b, uint64_t value) 
   : BRealBounded(a, b), value_(value) {}
   virtual uint64_t Identifier() const override { return value_; }
+
+  static std::shared_ptr<TempKV> FactoryBuild(size_t a, size_t b) {
+    std::string l = std::to_string(a);
+    std::string r = std::to_string(b);
+    uint64_t v = a * 100 + b;
+    return std::make_shared<TempKV>(l, r, v);
+  }
 };
 
 TEST(SBSTest, Simple) {
-  std::vector<std::string> alpha, alpha_min, alpha_max;
-  std::vector<std::shared_ptr<TempKV>> set1, set2;
   sagitrs::SBSkiplist<TempKV> list;
-  {
-    for (char c = '0'; c <= '9'; ++c) 
-      alpha.emplace_back(1, c);
-    for (auto s : alpha) {
-      alpha_min.emplace_back(s + '0');
-      alpha_max.emplace_back(s + '9');
-      set1.push_back(std::make_shared<TempKV>(s, s, alpha_min.size() * 1));
-      set2.push_back(std::make_shared<TempKV>(*alpha_min.rbegin(), *alpha_max.rbegin(), alpha_min.size() * 11));
-      list.Put(*set1.rbegin());
-    }  
+  for (size_t i =9; i >= 1; i --) {
+    list.Put(TempKV::FactoryBuild(i*10+0, i*10+0));
+    //std::cout << list.ToString() << std::endl;
+    list.Put(TempKV::FactoryBuild(i*10+9, i*10+9));
+    //std::cout << list.ToString() << std::endl;
+  }
+  std::cout << list.ToString() << std::endl;
+
+  for (size_t i = 1; i <= 9; ++i) {
+    list.Put(TempKV::FactoryBuild(i*10+0, i*10+9));
     std::cout << list.ToString() << std::endl;
   }
+  
+  std::cout << list.ToString() << std::endl;
   
 
   ASSERT_EQ(true, true);

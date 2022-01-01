@@ -51,7 +51,7 @@ struct SBSNode {
     level_({std::make_shared<LevelNode>(next)}) {}
   Slice Guard() const { return is_head_ ? Slice("") : guard_; }
   size_t Height() const { return level_.size(); } 
-  SBSP Next(size_t k, size_t recursive = 0) const { 
+  SBSP Next(size_t k, size_t recursive = 1) const { 
     SBSP next = level_[k]->next_;
     for (size_t i = 1; i < recursive; ++i) {
       assert(next != nullptr && next->Height() >= k);
@@ -96,8 +96,12 @@ struct SBSNode {
       return options.TestState(Width(height), is_head_); 
   }
   bool Fit(size_t height, const Bounded& range) const { 
-    return Next(height) == nullptr 
-        || range.Max().compare(Next(height)->Guard()) < 0; 
+    int cmp1 = range.Min().compare(Guard());
+    if (cmp1 < 0) return 0;
+    auto next = Next(height);
+    if (next == nullptr) return 1;
+    int cmp2 = range.Max().compare(next->Guard());
+    return cmp2 < 0;
   }
   void Add(const SBSOptions& options, size_t height, ValuePtr range) {
     level_[height]->Add(range);
@@ -124,11 +128,17 @@ struct SBSNode {
     } else {
       assert(!level_[height]->isDirty());
       assert(options.TestState(Width(height), is_head_) > 0);
-      size_t reserve = options.MinWidth();
+      size_t reserve = options.DefaultWidth();
       assert(reserve > 1);
       SBSP next = Next(height);
-      SBSP middle = Next(height - 1, reserve - 1);
+      SBSP middle = Next(height - 1, reserve);
       middle->IncHeight(next);
+      SetNext(height, middle);
+      // if this node is root node, increase height.
+      if (is_head_ && height + 1== Height()) {
+        assert(next == nullptr);
+        IncHeight(nullptr);
+      }
     }
   }
   void AbsorbNext(const SBSOptions& options, size_t height) {
@@ -142,7 +152,7 @@ struct SBSNode {
   std::string ToString() const {
     std::stringstream ss;
     size_t width = 5;
-    size_t std_total_width = 30;
+    size_t std_total_width = 42;
     {
       TypeBuffer::const_iterator iters[Height()], iters_end[Height()];
       for (size_t i = 0; i < Height(); ++i) {
@@ -165,8 +175,9 @@ struct SBSNode {
           break;
         for (size_t i = 0; i < line.size(); ++i) {
           std::string suffix(line[i].size() > width ? 0 : width - line[i].size(), ' ');
-          ss << line[i] << suffix;
+          ss << line[i] << suffix << "|";
         }
+        ss << std::endl;
       }
     }
     return ss.str();

@@ -40,9 +40,10 @@ struct SBSkiplist {
   std::string ToString() const {
     std::stringstream ss;
     for (auto i = head_; i != nullptr; i = i->Next(0)) {
-      ss << i->ToString() << std::endl;
-      ss << "------------------------------" << std::endl;
+      ss << i->ToString();
+      ss << "-----------------------------------------------------------------" << std::endl;
     }
+    ss << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++";
     return ss.str();
   }
 };
