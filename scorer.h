@@ -9,9 +9,11 @@ namespace sagitrs {
 struct Scorer {
  private:
   size_t head_height_;
+  void SetGlobalStatus(size_t head_height) { head_height_ = head_height; }
  private:
   std::shared_ptr<SBSNode> node_;
   size_t height_;
+  void SetNode(std::shared_ptr<SBSNode> node, size_t height) { node_ = node; height_ = Height; }
  public:
   Scorer() :node_(nullptr), height_(0) {}
   size_t Height() const { return height_; }
@@ -23,16 +25,16 @@ struct Scorer {
 
 struct LeveledScorer : public Scorer {
  private:
-  size_t level0_max_size_ = 8;
-  size_t tiered_runs_ = 1;
-  size_t max_width_ = 20;
+  size_t max_level0_size_ = 8;
+  size_t max_tiered_runs_ = 1;
+  size_t max_files_ = 20;
 
   virtual double Calculate() override {
     if (Level() == 0) 
-      return BufferSize() > level0_max_size_ ? 1 : 0;
-    if (BufferSize() > tiered_runs_)
+      return BufferSize() > max_level0_size_ ? 1 : 0;
+    if (BufferSize() > max_tiered_runs_)
       return 1;
-    return 1.0 * Width() / max_width_;
+    return 1.0 * (BufferSize() + Width()) / max_files_;
   }
 };
 

@@ -4,13 +4,16 @@
 #include <stack>
 #include "sbs_node.h"
 namespace sagitrs {
-
-template<typename TypeBoundedValue>
+struct Scorer;
+template<typename TypeBoundedValue, typename TypeScorer, typename TypeCounter>
 struct SBSkiplist {
- typedef std::shared_ptr<TypeBoundedValue> TypeValuePtr;
+  friend struct Scorer;
+  typedef std::shared_ptr<TypeBoundedValue> TypeValuePtr;
+  typedef SBSNode<TypeCounter> TypeNode;
  private:
   SBSOptions options_;
-  std::shared_ptr<SBSNode> head_;
+  std::shared_ptr<TypeNode> head_;
+  TypeNode::Iterator<TypeScorer> iter_;
  public:
   SBSkiplist() 
   : options_(),
@@ -19,19 +22,19 @@ struct SBSkiplist {
   void Put(TypeValuePtr value) {
     auto iter = SBSNode::Iterator(head_);
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    iter.SeekTree(*target);
+    iter.TraceRoute(*target);
     iter.Add(options_,  target);
   }
   bool Contains(TypeValuePtr value) {
     auto iter = SBSNode::Iterator(head_);
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    iter.SeekTree(*target);
+    iter.TraceRoute(*target);
     return iter.Seek(target);
   }
   bool Del(TypeValuePtr value) {
     auto iter = SBSNode::Iterator(head_);
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    iter.SeekTree(*target);
+    iter.TraceRoute(*target);
     bool contains = iter.Seek(target);
     if (!contains) return 0;
     iter.Del(options_, target);
