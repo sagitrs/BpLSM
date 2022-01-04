@@ -30,6 +30,7 @@ struct SBSNode {
   : is_head_(true),
     guard_(""),
     level_({std::make_shared<LevelNode>(), std::make_shared<LevelNode>()}) {}
+  // build leaf node.
   SBSNode(SBSP next) 
   : is_head_(false), 
     guard_("Undefined."), 
@@ -107,6 +108,7 @@ struct SBSNode {
       auto &a = level_[0]->buffer_;
       assert(a.size() == 2);
       auto tmp = std::make_shared<SBSNode>(Next(0));
+      tmp->level_[0]->BuildBlankParaTable(*level_[0]->paras_);
       tmp->Add(options, 0, *a.rbegin());
       SetNext(0, tmp);
       a.Del(**a.rbegin());
@@ -118,9 +120,10 @@ struct SBSNode {
       SBSP next = Next(height);
       SBSP middle = Next(height - 1, reserve);
       middle->IncHeight(next);
+      middle->level_[height]->BuildBlankParaTable()
       SetNext(height, middle);
       // if this node is root node, increase height.
-      if (is_head_ && height + 1== Height()) {
+      if (is_head_ && height + 1 == Height()) {
         assert(next == nullptr);
         IncHeight(nullptr);
       }
