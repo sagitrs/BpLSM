@@ -3,36 +3,38 @@
 #include <vector>
 #include <stack>
 #include "sbs_node.h"
+#include "sbs_iterator.h"
 namespace sagitrs {
 struct Scorer;
-template<typename TypeBoundedValue, typename TypeScorer, typename TypeCounter>
+
 struct SBSkiplist {
   friend struct Scorer;
-  typedef std::shared_ptr<TypeBoundedValue> TypeValuePtr;
-  typedef SBSNode<TypeCounter> TypeNode;
+  typedef std::shared_ptr<BoundedValue> TypeValuePtr;
+  typedef SBSNode TypeNode;
  private:
   SBSOptions options_;
   std::shared_ptr<TypeNode> head_;
-  TypeNode::Iterator<TypeScorer> iter_;
+  SBSIterator iter_;
  public:
   SBSkiplist() 
   : options_(),
-    head_(std::make_shared<SBSNode>()) {}
+    head_(std::make_shared<SBSNode>()),
+    iter_(head_) {}
 
   void Put(TypeValuePtr value) {
-    auto iter = SBSNode::Iterator(head_);
+    auto iter = SBSIterator(head_);
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
     iter.TraceRoute(*target);
     iter.Add(options_,  target);
   }
   bool Contains(TypeValuePtr value) {
-    auto iter = SBSNode::Iterator(head_);
+    auto iter = SBSIterator(head_);
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
     iter.TraceRoute(*target);
     return iter.Seek(target);
   }
   bool Del(TypeValuePtr value) {
-    auto iter = SBSNode::Iterator(head_);
+    auto iter = SBSIterator(head_);
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
     iter.TraceRoute(*target);
     bool contains = iter.Seek(target);

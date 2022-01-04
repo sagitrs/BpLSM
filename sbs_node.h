@@ -8,36 +8,18 @@
 #include "bounded_value_container.h"
 #include "options.h"
 #include "statistics.h"
+#include "level_node.h"
 namespace sagitrs {
-struct SBSNode;
 
-typedef BoundedValueContainer TypeBuffer;
-//TODO: Buffer shall be sorted!!!!!
+struct SBSIterator;
+struct Coordinates;
 
-template<typename TypeCounter>
-struct LevelNode {
-  std::shared_ptr<SBSNode> next_;
-  TypeBuffer buffer_;
-  Statistics<TypeCounter> stats_;
-  LevelNode() : next_(nullptr), buffer_() {}
-  LevelNode(std::shared_ptr<SBSNode> next) 
-  : next_(next), buffer_() {}
-  void Add(std::shared_ptr<BoundedValue> value) { buffer_.Add(value); }
-  void Del(std::shared_ptr<BoundedValue> value) { buffer_.Del(*value); }
-  bool Contains(std::shared_ptr<BoundedValue> value) const { return buffer_.Contains(*value); }
-  bool Overlap() const { return buffer_.Overlap(); }
-  void Absorb(const LevelNode& node) {
-    next_ = node.next_;
-    buffer_.AddAll(node.buffer_);
-  }
-  bool isDirty() const { return !buffer_.empty(); }
-};
-template<typename TypeCounter>
 struct SBSNode {
-  typedef std::shared_ptr<SBSNode<TypeCounter>> SBSP;
+  typedef std::shared_ptr<SBSNode> SBSP;
   typedef std::shared_ptr<BoundedValue> ValuePtr;
-  typedef LevelNode<TypeCounter> InnerNode;
-
+  typedef LevelNode InnerNode;
+  friend struct SBSIterator;
+  friend struct Coordinates;
  private:
   bool is_head_;
   Slice guard_;
@@ -185,115 +167,6 @@ struct SBSNode {
     }
     return ss.str();
   }
-  
-  //---------------------------------Iterator-----------------------------
-  // The data structure looks more like a syntactic sugar, 
-  // which treats each layer of SBSNode as a separate "node".
-  struct Coordinates {
-    SBSP node_;
-    size_t height_;
-    Coordinates(SBSP node, size_t height) 
-    : node_(node), height_(height){}
-    
-    SBSP Next() const { return node_->Next(height_); }
-    void JumpNext() { node_ = Next(); }
-    int TestState(const SBSOptions& options) const { return node_->TestState(options, height_); }
-    bool Fit(const Bounded& range) const { return node_->Fit(height_, range); }
-    void Del(ValuePtr range) const { node_->Del(height_, range); }
-    void Add(const SBSOptions& options, ValuePtr range) const { node_->Add(options, height_, range); }
-    bool Contains(ValuePtr range) const { return node_->level_[height_]->Contains(range); }
-    void SplitNext(const SBSOptions& options) { node_->SplitNext(options, height_); }
-    void AbsorbNext(const SBSOptions& options) { node_->AbsorbNext(options, height_); }
-    bool operator ==(const Coordinates& b) { return node_ == b.node_; }
-    bool IsDirty() const { return node_->level_[height_]->isDirty(); }
-  };
-
-  template<typename TypeScorer>
-  struct Iterator {
-   private:
-    TypeScorer scorer_;
-    std::stack<Coordinates> history_;
-    Coordinates& Current() { return history_.top(); }
-   public:
-    Iterator(SBSP head, int height = -1) 
-    : scorer_(),
-      history_() {
-        scorer_.SetGlobalStatus(head->Height());
-        history_.emplace(head, height < 0 ? head->Height()-1 : height);
-    }
-
-    void ReturnToRoot() { while (history_.size() > 1) history_.pop(); }
-    // Jump to a node within the tree that meets the requirements 
-    // and save all nodes on the path.
-    void TraceRoute(const Bounded& range) {
-      while (Current().Fit(range) && Current().height_ > 0) {
-        SBSP st = Current().node_;
-        SBSP ed = Current().Next();
-        size_t height = Current().height_ - 1;
-        bool dive = false;
-        for (Coordinates c = Coordinates(st, height); c.node_ != ed; c.JumpNext()) 
-          if (c.Fit(range)) {
-            history_.push(c);
-            dive = true;
-            break;
-          }
-        if (!dive) break;
-      }
-    }
-    // Find elements on the path that exactly match the target object 
-    // (including ranges and values).
-    bool Seek(ValuePtr value) {
-      while (history_.size() > 1 && !Current().Contains(value)) {
-        history_.pop();
-      } 
-      return !(history_.size() > 1) 
-          || Current().Contains(value);
-    }
-    // Add a value to the current node.
-    // This may recursively trigger a split operation.
-    void Add(const SBSOptions& options, ValuePtr range) {
-      Current().Add(options, range);
-      while (history_.size() >= 1) {
-        if (Current().IsDirty() || Current().TestState(options) <= 0)
-          break;
-        Current().SplitNext(options);
-        history_.pop();
-      }
-      ReturnToRoot();
-    }
-    // Assume: The current node contains the target value.
-    // Delete a value within the current node which is the same as the given value.
-    // This may recursively trigger a merge operation and possibly a split operation.
-    void Del(const SBSOptions& options, ValuePtr range) {
-      Current().Del(range);
-      while (history_.size() > 1) {
-        Coordinates target = Current();
-        history_.pop();
-
-        bool shrink = Current().TestState(options) < 0;
-        if (!shrink) break;
-
-        SBSP st = Current().node_;
-        SBSP ed = Current().Next();
-        size_t h = target.height_;
-        for (Coordinates i = Coordinates(st, h); i.node_ != ed; i.JumpNext())
-          if (i.Next() != ed && i == target) {
-            size_t prev_width = i.node_->Width(h);
-            SBSP next = target.Next();
-            if (next == ed) next = nullptr;
-            if (next && next->Width(h) < prev_width) {
-              i.JumpNext();
-              assert(i == target);
-            }
-            i.AbsorbNext(options);
-            if (i.TestState(options) > 0 && !i.IsDirty())
-              i.SplitNext(options);
-            break;
-          }
-      }
-      ReturnToRoot();
-    }
-  };
 };
 
 

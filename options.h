@@ -61,7 +61,7 @@ struct StatisticsOptions {
 };
 
 struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
-  size_t width_[3] = {3, 5, 10};
+  size_t width_[3] = {2, 4, 8};
   size_t MinWidth() const override { return width_[0]; }
   size_t DefaultWidth() const override { return width_[1]; }
   size_t MaxWidth() const override { return width_[2]; }
