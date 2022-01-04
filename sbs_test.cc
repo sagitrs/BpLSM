@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "sbs.h"
 #include "bounded.h"
+#include "bounded_value_container.h"
 
 namespace leveldb {
 
@@ -35,13 +36,17 @@ TEST(SBSTest, Simple) {
   std::cout << list.ToString() << std::endl;
   for (size_t i = 1; i <= 9; ++i) {
     list.Put(TempKV::FactoryBuild(i*10+0, i*10+9));
-    std::cout << list.ToString() << std::endl;
+    //std::cout << list.ToString() << std::endl;
   }
   
   std::cout << list.ToString() << std::endl;
   
+  Slice target_key("70");
+  TempKV kv(target_key, target_key, 12345678);
+  sagitrs::BoundedValueContainer container;
+  list.Get(kv, container);
 
-  ASSERT_EQ(true, true);
+  ASSERT_EQ(container.size(), 3);
 }
 
 }  // namespace leveldb

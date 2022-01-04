@@ -23,25 +23,39 @@ struct Coordinates {
   void AbsorbNext(const SBSOptions& options) { node_->AbsorbNext(options, height_); }
   bool operator ==(const Coordinates& b) { return node_ == b.node_; }
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
+  void IncStatistics(Counter::TypeLabel label, int size) { node_->level_[height_]->paras_->IncStatistics(label, size); }
+  void GetRanges(const Bounded& key, BoundedValueContainer& results) {
+
+  }
 };
 
 struct SBSIterator {
   private:
   //TypeScorer scorer_;
-  std::stack<Coordinates> history_;
+  std::stack<Coordinates> history_, route_;
   Coordinates& Current() { return history_.top(); }
+  void Push(const Coordinates& coor) {
+    history_.push(coor);
+    route_.push(coor);
+  }
   public:
   SBSIterator(SBSNode::SBSP head, int height = -1) 
   : //scorer_(),
     history_() {
       //scorer_.SetGlobalStatus(head->Height());
-      history_.emplace(head, height < 0 ? head->Height()-1 : height);
+      Push(Coordinates(head, height < 0 ? head->Height()-1 : height));
   }
 
-  void ReturnToRoot() { while (history_.size() > 1) history_.pop(); }
+  void GoToRoot() { 
+    while (history_.size() > 1) history_.pop();
+    while (route_.size() > 1) route_.pop();
+  }
+  // Assert: Already SeekRange().
+  void GoToTarget() { history_ = route_; }
   // Jump to a node within the tree that meets the requirements 
   // and save all nodes on the path.
-  void TraceRoute(const Bounded& range) {
+  void SeekRange(const Bounded& range) {
+    GoToRoot();
     while (Current().Fit(range) && Current().height_ > 0) {
       SBSNode::SBSP st = Current().node_;
       SBSNode::SBSP ed = Current().Next();
@@ -49,7 +63,7 @@ struct SBSIterator {
       bool dive = false;
       for (Coordinates c = Coordinates(st, height); c.node_ != ed; c.JumpNext()) 
         if (c.Fit(range)) {
-          history_.push(c);
+          Push(c);
           dive = true;
           break;
         }
@@ -58,7 +72,9 @@ struct SBSIterator {
   }
   // Find elements on the path that exactly match the target object 
   // (including ranges and values).
-  bool Seek(SBSNode::ValuePtr value) {
+  // Assert: Already SeekRange().
+  bool SeekValue(SBSNode::ValuePtr value) {
+    GoToTarget();
     while (history_.size() > 1 && !Current().Contains(value)) {
       history_.pop();
     } 
@@ -67,7 +83,9 @@ struct SBSIterator {
   }
   // Add a value to the current node.
   // This may recursively trigger a split operation.
+  // Assert: Already SeekRange().
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) {
+    GoToTarget();
     Current().Add(options, range);
     while (history_.size() >= 1) {
       if (Current().TestState(options) <= 0 || (Current().height_ > 0 && Current().IsDirty()))
@@ -75,12 +93,24 @@ struct SBSIterator {
       Current().SplitNext(options);
       history_.pop();
     }
-    ReturnToRoot();
+  }
+ private:
+ public:
+  // Get all the values on the path that are overlap with the given range.
+  void GetRangesOnRoute(const Bounded& range, BoundedValueContainer& results) {
+    GoToTarget();
+    while (!history_.empty()) {
+      Current().GetRanges(range, results);
+      history_.pop();
+    }
   }
   // Assume: The current node contains the target value.
   // Delete a value within the current node which is the same as the given value.
   // This may recursively trigger a merge operation and possibly a split operation.
+  // Assert: Already SeekRange().
+  // Assert: Already SeekValue().
   void Del(const SBSOptions& options, SBSNode::ValuePtr range) {
+    GoToTarget();
     Current().Del(range);
     while (history_.size() > 1) {
       Coordinates target = Current();
@@ -107,7 +137,22 @@ struct SBSIterator {
           break;
         }
     }
-    ReturnToRoot();
+    // Since the path node may have changed, we always assume that 
+    // the path information is no longer accessible and 
+    // therefore return to the root node.
+    GoToRoot();
+  }
+
+  void TargetIncStatistics(Counter::TypeLabel label, int size) { 
+    GoToTarget();
+    Current().IncStatistics(label, size); 
+  }
+  void RouteIncStatistics(Counter::TypeLabel label, int size) {
+    GoToTarget();
+    while (!history_.empty()) {
+      Current().IncStatistics(label, size);
+      history_.pop();
+    }
   }
 };
 

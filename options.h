@@ -26,13 +26,12 @@ struct SBSNodeOptions {
 };
 
 struct StatisticsOptions {
-  // 
   // The duration of a time slice in microseconds.
   // For example, if you want to set the time slice to 60 seconds, 
   // this value would be 60 * 1000000.
-  virtual size_t TimeSliceMicroSecond() const = 0;
+  virtual uint64_t TimeSliceMicroSecond() const = 0;
   // The maximum number of time slices that can be recorded.
-  virtual size_t TimeSliceMaximumSize() const = 0;
+  virtual uint64_t TimeSliceMaximumSize() const = 0;
 
   // Env::NowMicros() is needed to get the current time 
   // to determine which time slice the data is saved in.
@@ -61,22 +60,34 @@ struct StatisticsOptions {
 };
 
 struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
+// Width limit of nodes:
+ private:
   size_t width_[3] = {2, 4, 8};
+ public:
   size_t MinWidth() const override { return width_[0]; }
   size_t DefaultWidth() const override { return width_[1]; }
   size_t MaxWidth() const override { return width_[2]; }
 
+// Statistics args: 
+ private:
   size_t time_slice_ = 60 * 1000 * 1000;
   size_t time_count_ = 10;
-
   double B = 0.1, I = 0.9, D = 0.0;
-
-  size_t TimeSliceMicroSecond() const override { return time_slice_; }
-  size_t TimeSliceMaximumSize() const override { return time_count_; }
+ public:
+  uint64_t TimeSliceMicroSecond() const override { return time_slice_; }
+  uint64_t TimeSliceMaximumSize() const override { return time_count_; }
   virtual leveldb::Env* TimerEnv() const override { return leveldb::Env::Default(); }
   double kBaseWeight() const override { return B; }
   double kIntegrationWeight() const override { return I; }
   double kDifferentiationWeight() const override { return D; }
+
+// User-defined parameters:
+ private:
+  size_t level0_buffer_size_ = 8;
+  size_t global_buffer_size_ = 1;
+ public:
+  size_t RootBufferLimit() { return level0_buffer_size_; }
+  size_t GlobalBufferLimit() { return global_buffer_size_; }
 };
 
 

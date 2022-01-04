@@ -8,8 +8,10 @@ namespace sagitrs {
 
 struct Scorer {
  private:
-  size_t head_height_;
-  void SetGlobalStatus(size_t head_height) { head_height_ = head_height; }
+  struct GlobalStatus {
+    size_t head_height_;
+  } status_;
+  void SetGlobalStatus(const GlobalStatus& status) { status_ = status; }
  private:
   std::shared_ptr<SBSNode> node_;
   size_t height_;
