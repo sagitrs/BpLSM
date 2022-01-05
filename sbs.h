@@ -37,7 +37,9 @@ struct SBSkiplist {
   void Get(const Bounded& range, BoundedValueContainer& container) {
     auto iter = SBSIterator(head_);
     iter.SeekRange(range);
-    iter.GetRangesOnRoute(range, container);
+    //std::cout << iter.ToString() << std::endl;
+    auto bound = std::make_shared<BRealBounded>(range.Min(), range.Max());
+    iter.GetRangesOnRoute(container, bound);
   }
   bool Del(TypeValuePtr value) {
     auto iter = SBSIterator(head_);
@@ -48,15 +50,20 @@ struct SBSkiplist {
     iter.Del(*options_, target);
     return 1;
   }
+  void PickFilesByScore(std::shared_ptr<Scorer> scorer, BoundedValueContainer& container) {
+    auto iter = SBSIterator(head_);
+    iter.SeekScore(scorer);
+    iter.GetRangesInNode(container);
+  }
   std::string ToString() const {
     std::stringstream ss;
     for (auto i = head_; i != nullptr; i = i->Next(0)) {
-      ss << i->ToString(SBSNode::PrintType::StatInfo);
-      ss << "-----------------------------------------------------------------" << std::endl;
+      ss << i->ToString();
     }
     ss << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++";
     return ss.str();
   }
+  std::shared_ptr<SBSNode> GetHead() const { return head_; }
 };
 
 }

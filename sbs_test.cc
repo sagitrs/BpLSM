@@ -47,7 +47,12 @@ TEST(SBSTest, Simple) {
   sagitrs::BoundedValueContainer container;
   list.Get(kv, container);
 
-  ASSERT_EQ(container.size(), 3);
+  ASSERT_EQ(container.size(), 2);
+  //---------------------------------------
+  container.clear();
+  auto scorer = std::make_shared<sagitrs::LeveledScorer>(list.GetHead());
+  list.PickFilesByScore(scorer, container);
+  std::cout << "PickCompaction=[" << container.ToString() << "]" << std::endl;
 }
 
 }  // namespace leveldb

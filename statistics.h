@@ -32,6 +32,12 @@ struct Counter {
     for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
       list_[i] += target[i];
   }
+  void GetInfo(std::vector<std::string>& set) {
+    //set.push_back("RQ =" + std::to_string(list_[RangeSeekCount]));
+    //set.push_back("PQ =" + std::to_string(list_[PointSeekCount]));
+    //set.push_back("HIT=" + std::to_string(list_[QueryHitCount]));
+    set.push_back("PUT=" + std::to_string(list_[PutCount]));
+  }
 };
 
 struct Statistics {
@@ -87,6 +93,10 @@ struct Statistics {
       else
         p->second->Superposition(*kv.second);
     }
+  }
+
+  void GetInfo(std::vector<std::string>& set) {
+    Current()->GetInfo(set);
   }
   //void IncStatistics(Counter::TypeLabel label, size_t size) { Inc(label, size); }
 };

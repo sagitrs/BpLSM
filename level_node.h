@@ -34,6 +34,10 @@ struct LevelNode {
     buffer_.AddAll(node.buffer_);
     node_stats_->Absorb(*node.node_stats_);
   }
+  void GetInfo(std::vector<std::string>& set) {
+    node_stats_->GetInfo(set);
+    buffer_.GetInfo(set);
+  }
 
 };
 

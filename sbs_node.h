@@ -1,5 +1,6 @@
 #pragma once
 
+#include <sstream>
 #include <vector>
 #include <stack>
 #include <memory>
@@ -13,6 +14,7 @@ namespace sagitrs {
 
 struct SBSIterator;
 struct Coordinates;
+struct Scorer;
 
 struct SBSNode {
   typedef std::shared_ptr<SBSNode> SBSP;
@@ -20,6 +22,7 @@ struct SBSNode {
   typedef LevelNode InnerNode;
   friend struct SBSIterator;
   friend struct Coordinates;
+  friend struct Scorer;
  private:
   std::shared_ptr<SBSOptions> options_;
   bool is_head_;
@@ -146,7 +149,7 @@ struct SBSNode {
   enum PrintType { DataInfo, StatInfo };
   std::string ToString(PrintType type) const {
     std::stringstream ss;
-    size_t width = 5;
+    size_t width = 10;
     size_t std_total_width = 42;
     if (type == DataInfo) {
       TypeBuffer::const_iterator iters[Height()], iters_end[Height()];
@@ -182,6 +185,27 @@ struct SBSNode {
       }
       ss << std::endl;
     }
+    return ss.str();
+  }
+  std::string ToString() const {
+    std::stringstream ss;
+    size_t width = 10;
+    std::vector<std::string> info[Height()];
+    size_t max_lines = 0;
+    for (size_t i = 0; i < Height(); ++i) {
+      level_[i]->GetInfo(info[i]);
+      if (info[i].size() > max_lines) max_lines = info[i].size();
+    }
+    for (size_t i = 0; i < max_lines; ++i) {
+      for (size_t j = 0; j < Height(); ++j) {
+        const std::string &data = i < info[j].size() ? info[j][i] : "";
+        std::string suffix(data.size() > width ? 0 : width - data.size(), ' ');
+        ss << data << suffix << "|";
+      }
+      ss << std::endl;
+    }
+    std::string divider((width+1)*Height(), '-');
+    ss << divider << std::endl;
     return ss.str();
   }
 };
