@@ -32,6 +32,7 @@ struct Coordinates {
         results.Add(*i);
     }
   }
+  BoundedValueContainer& Buffer() { return node_->level_[height_]->buffer_; }
 
   std::string ToString() const {
     std::string node = node_->Guard().ToString();
@@ -138,15 +139,24 @@ struct SBSIterator {
     bool ok = SeekNode(target);
     assert(ok);
   }
-  void Add(const SBSOptions& options, SBSNode::ValuePtr range) {
-    GoToTarget();
-    Current().Add(options, range);
+ private:
+  void CheckSplit(const SBSOptions& options) {
     while (history_.size() >= 1) {
-      if (Current().TestState(options) <= 0 || (Current().height_ > 0 && Current().IsDirty()))
-        break;
-      Current().SplitNext(options);
+      while (Current().TestState(options) > 0) {
+        // Dirty node can not split.
+        if (Current().height_ > 0 && Current().IsDirty()) 
+          break;
+        Current().SplitNext(options);
+      }
       history_.pop();
     }
+  }
+ public:
+  void Add(const SBSOptions& options, SBSNode::ValuePtr range) {
+    SeekRange(*range);
+    GoToTarget();
+    Current().Add(options, range);
+    CheckSplit(options);
   }
  private:
  public:
@@ -167,33 +177,73 @@ struct SBSIterator {
   // This may recursively trigger a merge operation and possibly a split operation.
   // Assert: Already SeekRange().
   // Assert: Already SeekValue().
-  void Del(const SBSOptions& options, SBSNode::ValuePtr range) {
+  bool Del(const SBSOptions& options, SBSNode::ValuePtr range) {
+    std::stack<SBSNode::ValuePtr> s;
+    bool ok = Del_(options, range, s);
+    if (!ok) return 0;
+    //s.push(range);
+    while (!s.empty()) {
+      auto e = s.top();
+      s.pop();
+      bool ok = Del_(options, e, s);
+      assert(ok);
+      Add(options, e);
+    }
+  }
+  bool Del_(const SBSOptions& options, SBSNode::ValuePtr range, std::stack<SBSNode::ValuePtr>& stack) {
+    SeekRange(*range);
+    bool contains = SeekValue(range);
+    if (!contains) return 0;
     GoToTarget();
     Current().Del(range);
-    while (history_.size() > 1) {
+    // Node not deleted, not cleared.
+    if (Current().IsDirty()) return 1;
+    if (Current().TestState(options) > 0) {
+      // delayed split.
+      CheckSplit(options);
+    } else {
       Coordinates target = Current();
-      history_.pop();
-
       bool shrink = Current().TestState(options) < 0;
-      if (!shrink) break;
+      while (history_.size() > 1) {
+        bool shrink = Current().TestState(options) < 0;
+        if (!shrink) break;
 
-      SBSNode::SBSP st = Current().node_;
-      SBSNode::SBSP ed = Current().Next();
-      size_t h = target.height_;
-      for (Coordinates i = Coordinates(st, h); i.node_ != ed; i.JumpNext())
-        if (i.Next() != ed && i.node_ == target.node_) {
-          size_t prev_width = i.node_->Width(h);
-          SBSNode::SBSP next = target.Next();
-          if (next == ed) next = nullptr;
-          if (next && next->Width(h) < prev_width) {
-            i.JumpNext();
-            assert(i.node_ == target.node_);
-          }
-          i.AbsorbNext(options);
-          if (i.TestState(options) > 0 && !i.IsDirty())
-            i.SplitNext(options);
+        Coordinates target = Current();
+        history_.pop();
+        
+        SBSNode::SBSP st = Current().node_;
+        SBSNode::SBSP ed = Current().Next();
+        size_t h = target.height_;
+        SBSNode::SBSP prev = nullptr;
+        SBSNode::SBSP next = target.Next() == ed ? nullptr : target.Next();
+        if (target.node_ != st) { 
+          for (Coordinates i = Coordinates(st, h); i.node_ != ed; i.JumpNext())
+            if (i.Next() == target.node_) {
+              prev = i.node_;
+              break;
+            }
+          assert(prev != nullptr);
+        }
+        if (prev && (!next || prev->Width(h) < next->Width(h)))
+          target.node_ = prev;
+        assert(next != nullptr);
+        target.AbsorbNext(options);
+        // Check if this node should split.
+        if (target.TestState(options) > 0 && !target.IsDirty()) {
+          target.SplitNext(options);
           break;
         }
+        // Check if files in buffer can be placed in under level.
+        for (auto element : Current().Buffer()) {
+          for (auto i = Coordinates(st, h); i.node_ != ed; i.JumpNext()) {
+            if (i.Fit(*element)) {
+              stack.push(element);
+              break;
+            }
+          }
+        }
+      }
+      return 1;
     }
     // Since the path node may have changed, we always assume that 
     // the path information is no longer accessible and 

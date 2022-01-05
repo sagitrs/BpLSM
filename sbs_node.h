@@ -82,12 +82,18 @@ struct SBSNode {
         }
       }
     }
-    assert(!blank);
+    if (blank) {
+      // error state, must be removed immediately.
+      guard_ = "Undefined.";
+    }
   }
  private:
   int TestState(const SBSOptions& options, size_t height) const { 
-    if (height == 0)
-      return level_[height]->buffer_.size() > 1;
+    if (height == 0) {
+      if (level_[height]->buffer_.size() > 1) return 1;
+      if (level_[height]->buffer_.size() == 0) return -1;
+      return 0;
+    }
     else 
       return options.TestState(Width(height), is_head_); 
   }
@@ -124,8 +130,9 @@ struct SBSNode {
       a.Del(**a.rbegin());
     } else {
       assert(!level_[height]->isDirty());
-      assert(options.TestState(Width(height), is_head_) > 0);
-      size_t reserve = options.DefaultWidth();
+      size_t width = Width(height);
+      assert(options.TestState(width, is_head_) > 0);
+      size_t reserve = width - options.DefaultWidth();
       assert(reserve > 1);
       SBSP next = Next(height);
       SBSP middle = Next(height - 1, reserve);
@@ -141,7 +148,7 @@ struct SBSNode {
   void AbsorbNext(const SBSOptions& options, size_t height) {
     auto next = Next(height);
     assert(next != nullptr);
-    assert(next->Height() == height);
+    assert(next->Height() == height+1);
     level_[height]->Absorb(*next->level_[height]);
     next->DecHeight();
   }

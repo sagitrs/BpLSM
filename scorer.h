@@ -21,26 +21,4 @@ struct Scorer {
   virtual double Calculate(std::shared_ptr<SBSNode> node, size_t height) = 0;
 };
 
-struct LeveledScorer : public Scorer {
- private:
-  struct GlobalStatus {
-    size_t head_height_;
-  } status_;
-  void Init(std::shared_ptr<SBSNode> head) {  status_.head_height_ = head->Height();  }
-  size_t max_level0_size_ = 8;
-  size_t max_tiered_runs_ = 1;
-  size_t max_files_ = 20;
- public:
-  LeveledScorer(std::shared_ptr<SBSNode> head) { Init(head); }
-  size_t Level() const { return status_.head_height_ - Height(); }
-  virtual double Calculate(std::shared_ptr<SBSNode> node, size_t height) override {
-    Scorer::SetNode(node, height);
-    if (Level() == 0) 
-      return BufferSize() > max_level0_size_ ? 1 : 0;
-    if (BufferSize() > max_tiered_runs_)
-      return 1;
-    return 1.0 * (BufferSize() + Width()) / max_files_;
-  }
-};
-
 }
