@@ -21,20 +21,27 @@ struct SBSNode {
   friend struct SBSIterator;
   friend struct Coordinates;
  private:
+  std::shared_ptr<SBSOptions> options_;
   bool is_head_;
   Slice guard_;
   std::vector<std::shared_ptr<InnerNode>> level_;
  public:
   // build head node.
-  SBSNode()
-  : is_head_(true),
+  SBSNode(std::shared_ptr<SBSOptions> options, size_t height)
+  : options_(options), 
+    is_head_(true),
     guard_(""),
-    level_({std::make_shared<LevelNode>(), std::make_shared<LevelNode>()}) {}
+    level_({}) {
+      for (size_t i = 0; i < height; ++i) {
+        level_.push_back(std::make_shared<LevelNode>(std::dynamic_pointer_cast<StatisticsOptions>(options), nullptr));
+      }
+    }
   // build leaf node.
-  SBSNode(SBSP next) 
-  : is_head_(false), 
+  SBSNode(std::shared_ptr<SBSOptions> options, SBSP next) 
+  : options_(options), 
+    is_head_(false), 
     guard_("Undefined."), 
-    level_({std::make_shared<LevelNode>(next)}) {}
+    level_({std::make_shared<LevelNode>(std::dynamic_pointer_cast<StatisticsOptions>(options), next)}) {}
   Slice Guard() const { return is_head_ ? Slice("") : guard_; }
   size_t Height() const { return level_.size(); } 
   SBSP Next(size_t k, size_t recursive = 1) const { 
@@ -99,16 +106,16 @@ struct SBSNode {
     if (Guard().compare(range->Min()) == 0)
       Rebound();
   }
-  void IncHeight(SBSP next) { 
-    level_.push_back(std::make_shared<LevelNode>(next)); 
+  void IncHeight(std::shared_ptr<StatisticsOptions> stat_options, SBSP next) { 
+    auto tmp = std::make_shared<LevelNode>(stat_options, next);
+    level_.push_back(tmp); 
   }
   void DecHeight() { level_.pop_back(); }
   void SplitNext(const SBSOptions& options, size_t height) {
     if (height == 0) {
       auto &a = level_[0]->buffer_;
       assert(a.size() == 2);
-      auto tmp = std::make_shared<SBSNode>(Next(0));
-      tmp->level_[0]->BuildBlankParaTable(*level_[0]->paras_);
+      auto tmp = std::make_shared<SBSNode>(options_, Next(0));
       tmp->Add(options, 0, *a.rbegin());
       SetNext(0, tmp);
       a.Del(**a.rbegin());
@@ -119,13 +126,12 @@ struct SBSNode {
       assert(reserve > 1);
       SBSP next = Next(height);
       SBSP middle = Next(height - 1, reserve);
-      middle->IncHeight(next);
-      middle->level_[height]->BuildBlankParaTable()
+      middle->IncHeight(level_[height]->node_stats_->options_, next);
       SetNext(height, middle);
       // if this node is root node, increase height.
       if (is_head_ && height + 1 == Height()) {
         assert(next == nullptr);
-        IncHeight(nullptr);
+        IncHeight(level_[height]->node_stats_->options_, nullptr);
       }
     }
   }
@@ -137,11 +143,12 @@ struct SBSNode {
     next->DecHeight();
   }
  public:
-  std::string ToString() const {
+  enum PrintType { DataInfo, StatInfo };
+  std::string ToString(PrintType type) const {
     std::stringstream ss;
     size_t width = 5;
     size_t std_total_width = 42;
-    {
+    if (type == DataInfo) {
       TypeBuffer::const_iterator iters[Height()], iters_end[Height()];
       for (size_t i = 0; i < Height(); ++i) {
         iters[i] = level_[i]->buffer_.begin();
@@ -167,6 +174,13 @@ struct SBSNode {
         }
         ss << std::endl;
       }
+    } else if (type == StatInfo) {
+      for (size_t i = 0; i < Height(); ++i) {
+        std::string data = std::to_string(level_[i]->node_stats_->GetCurrent(DefaultCounterType::PutCount));
+        std::string suffix(data.size() > width ? 0 : width - data.size(), ' ');
+        ss << data << suffix;
+      }
+      ss << std::endl;
     }
     return ss.str();
   }

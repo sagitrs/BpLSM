@@ -26,7 +26,8 @@ struct TempKV : virtual public sagitrs::BoundedValue,
 };
 
 TEST(SBSTest, Simple) {
-  sagitrs::SBSkiplist list;
+  sagitrs::SBSOptions options;
+  sagitrs::SBSkiplist list(options);
   for (size_t i =9; i >= 1; i --) {
     list.Put(TempKV::FactoryBuild(i*10+0, i*10+0));
     //std::cout << list.ToString() << std::endl;

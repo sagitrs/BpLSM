@@ -23,9 +23,10 @@ struct Coordinates {
   void AbsorbNext(const SBSOptions& options) { node_->AbsorbNext(options, height_); }
   bool operator ==(const Coordinates& b) { return node_ == b.node_; }
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
-  void IncStatistics(Counter::TypeLabel label, int size) { node_->level_[height_]->paras_->IncStatistics(label, size); }
+  void IncStatistics(Counter::TypeLabel label, int size) { node_->level_[height_]->node_stats_->Inc(label, size); }
   void GetRanges(const Bounded& key, BoundedValueContainer& results) {
-
+    auto& buffer = node_->level_[height_]->buffer_;
+    results.insert(buffer.begin(), buffer.end());
   }
 };
 
@@ -46,7 +47,7 @@ struct SBSIterator {
       Push(Coordinates(head, height < 0 ? head->Height()-1 : height));
   }
 
-  void GoToRoot() { 
+  void ResetToRoot() { 
     while (history_.size() > 1) history_.pop();
     while (route_.size() > 1) route_.pop();
   }
@@ -55,7 +56,7 @@ struct SBSIterator {
   // Jump to a node within the tree that meets the requirements 
   // and save all nodes on the path.
   void SeekRange(const Bounded& range) {
-    GoToRoot();
+    ResetToRoot();
     while (Current().Fit(range) && Current().height_ > 0) {
       SBSNode::SBSP st = Current().node_;
       SBSNode::SBSP ed = Current().Next();
@@ -140,19 +141,12 @@ struct SBSIterator {
     // Since the path node may have changed, we always assume that 
     // the path information is no longer accessible and 
     // therefore return to the root node.
-    GoToRoot();
+    ResetToRoot();
   }
 
   void TargetIncStatistics(Counter::TypeLabel label, int size) { 
     GoToTarget();
     Current().IncStatistics(label, size); 
-  }
-  void RouteIncStatistics(Counter::TypeLabel label, int size) {
-    GoToTarget();
-    while (!history_.empty()) {
-      Current().IncStatistics(label, size);
-      history_.pop();
-    }
   }
 };
 

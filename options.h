@@ -88,6 +88,10 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
  public:
   size_t RootBufferLimit() { return level0_buffer_size_; }
   size_t GlobalBufferLimit() { return global_buffer_size_; }
+
+ public:
+  SBSOptions() = default;
+  SBSOptions(const SBSOptions& options) = default;
 };
 
 

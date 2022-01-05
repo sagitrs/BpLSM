@@ -37,8 +37,8 @@ struct Counter {
 struct Statistics {
   typedef std::shared_ptr<Counter> CPTR;
   typedef uint64_t TypeTime;
- private:
   std::shared_ptr<StatisticsOptions> options_;
+ private:
   std::map<TypeTime, CPTR> history_;
   uint64_t Now() { return options_->TimerEnv()->NowMicros() / options_->TimeSliceMicroSecond(); }
   uint64_t LastTimeSlice() const { return history_.rbegin()->first; }
@@ -69,13 +69,9 @@ struct Statistics {
   Statistics(std::shared_ptr<StatisticsOptions> options) 
   : options_(options), history_() {}
   void Inc(Counter::TypeLabel label, int size) { Current()->Inc(label, size); }
+  Counter::TypeData GetCurrent(Counter::TypeLabel label) { return (*Current())[label]; }
   Statistics(const Statistics& stats) = default;
 
-  // Initialize the head node from the option.
-  virtual void ConstructByOptions(std::shared_ptr<StatisticsOptions> options) {
-    options_ = options;
-    history_.clear();
-  }
   // When a node inherits the contents of the original node in proportion k, 
   // ParaTable must give an initialization scheme.
   virtual void Shrink(double k) {
