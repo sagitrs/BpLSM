@@ -67,6 +67,7 @@ TEST(SBSTest, Simple) {
   std::cout << list.ToString() << std::endl;
   //---------------------------------------
   list.Del(TempKV::FactoryBuild(29, 29));
+  list.Del(TempKV::FactoryBuild(20, 20));
   std::cout << list.ToString() << std::endl;
 }
 

@@ -16,7 +16,7 @@ struct Coordinates {
   SBSNode::SBSP Next() const { return node_->Next(height_); }
   void JumpNext() { node_ = Next(); }
   int TestState(const SBSOptions& options) const { return node_->TestState(options, height_); }
-  bool Fit(const Bounded& range) const { return node_->Fit(height_, range); }
+  bool Fit(const Bounded& range, bool no_overlap) const { return node_->Fit(height_, range, no_overlap); }
   void Del(SBSNode::ValuePtr range) const { node_->Del(height_, range); }
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) const { node_->Add(options, height_, range); }
   bool Contains(SBSNode::ValuePtr range) const { return node_->level_[height_]->Contains(range); }
@@ -57,13 +57,13 @@ struct SBSIterator {
   bool SeekNode(Coordinates target) {
     ResetToRoot();
     BRealBounded range(target.node_->Guard(), target.node_->Guard());
-    while (Current().Fit(range) && Current().height_ > 0) {
+    while (Current().Fit(range, false) && Current().height_ > 0) {
       SBSNode::SBSP st = Current().node_;
       SBSNode::SBSP ed = Current().Next();
       size_t height = Current().height_ - 1;
       bool dive = false;
       for (Coordinates c = Coordinates(st, height); c.node_ != ed; c.JumpNext()) 
-        if (c.Fit(range)) {
+        if (c.Fit(range, false)) {
           Push(c);
           dive = true;
           if (c == target) return 1;
@@ -83,22 +83,23 @@ struct SBSIterator {
       Push(Coordinates(head, height < 0 ? head->Height()-1 : height));
   }
   void ResetToRoot() { 
-    while (history_.size() > 1) history_.pop();
     while (route_.size() > 1) route_.pop();
+    LoadRoute();
   }
   // Assert: Already SeekRange().
-  void GoToTarget() { history_ = route_; }
+  void LoadRoute() { history_ = route_; }
+  void StoreRoute() { route_ = history_; }
   // Jump to a node within the tree that meets the requirements 
   // and save all nodes on the path.
-  void SeekRange(const Bounded& range) {
+  void SeekRange(const Bounded& range, bool no_level0_overlap = false) {
     ResetToRoot();
-    while (Current().Fit(range) && Current().height_ > 0) {
+    while (Current().Fit(range, false) && Current().height_ > 0) {
       SBSNode::SBSP st = Current().node_;
       SBSNode::SBSP ed = Current().Next();
       size_t height = Current().height_ - 1;
       bool dive = false;
       for (Coordinates c = Coordinates(st, height); c.node_ != ed; c.JumpNext()) 
-        if (c.Fit(range)) {
+        if (c.Fit(range, c.height_ == 0 && no_level0_overlap)) {
           Push(c);
           dive = true;
           break;
@@ -110,12 +111,16 @@ struct SBSIterator {
   // (including ranges and values).
   // Assert: Already SeekRange().
   bool SeekValue(SBSNode::ValuePtr value) {
-    GoToTarget();
-    while (history_.size() > 1 && !Current().Contains(value)) {
+    LoadRoute();
+    while (!history_.empty()) {
+      bool found = Current().Contains(value);
+      if (found) {
+        StoreRoute();
+        return 1;
+      }
       history_.pop();
     } 
-    return !(history_.size() > 1) 
-        || Current().Contains(value);
+    return 0;
   }
   // Add a value to the current node.
   // This may recursively trigger a split operation.
@@ -154,19 +159,19 @@ struct SBSIterator {
  public:
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) {
     SeekRange(*range);
-    GoToTarget();
+    LoadRoute();
     Current().Add(options, range);
     CheckSplit(options);
   }
  private:
  public:
   void GetRangesInNode(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) {
-    GoToTarget();
+    LoadRoute();
     Current().GetRanges(results, range);
   }
   // Get all the values on the path that are overlap with the given range.
   void GetRangesOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) {
-    GoToTarget();
+    LoadRoute();
     while (!history_.empty()) {
       Current().GetRanges(results, range);
       history_.pop();
@@ -195,7 +200,7 @@ struct SBSIterator {
     SeekRange(*range);
     bool contains = SeekValue(range);
     if (!contains) return 0;
-    GoToTarget();
+    LoadRoute();
     Current().Del(range);
     // Node not deleted, not cleared.
     if (Current().IsDirty()) return 1;
@@ -228,17 +233,17 @@ struct SBSIterator {
         }
         if (prev && (!next || prev->Width(h) < next->Width(h)))
           target.node_ = prev;
-        assert(next != nullptr);
+        else
+          assert(next != nullptr);
         target.AbsorbNext(options);
         // Check if this node should split.
         if (target.TestState(options) > 0 && !target.IsDirty()) {
           target.SplitNext(options);
-          break;
         }
         // Check if files in buffer can be placed in under level.
         for (auto element : Current().Buffer()) {
           for (auto i = Coordinates(st, h); i.node_ != ed; i.JumpNext()) {
-            if (i.Fit(*element)) {
+            if (i.Fit(*element, h == 0)) {
               stack.push(element);
               break;
             }
@@ -254,17 +259,17 @@ struct SBSIterator {
   }
 
   void TargetIncStatistics(Counter::TypeLabel label, int size) { 
-    GoToTarget();
+    LoadRoute();
     Current().IncStatistics(label, size); 
   }
   std::string ToString() {
-    GoToTarget();
+    LoadRoute();
     std::stringstream ss;
     while (!history_.empty()) {
       ss << Current().ToString() << ",";
       history_.pop();
     }
-    GoToTarget();
+    LoadRoute();
     return ss.str();
   }
 };

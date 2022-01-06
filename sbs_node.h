@@ -87,6 +87,13 @@ struct SBSNode {
       guard_ = "Undefined.";
     }
   }
+  bool Empty() {
+    bool blank = true;
+    for (auto node : level_)
+      if (!node->buffer_.empty())
+        return 0;
+    return 1;
+  }
  private:
   int TestState(const SBSOptions& options, size_t height) const { 
     if (height == 0) {
@@ -97,17 +104,21 @@ struct SBSNode {
     else 
       return options.TestState(Width(height), is_head_); 
   }
-  bool Fit(size_t height, const Bounded& range) const { 
+  bool Fit(size_t height, const Bounded& range, bool no_overlap) const { 
     int cmp1 = range.Min().compare(Guard());
     if (cmp1 < 0) return 0;
     auto next = Next(height);
     if (next == nullptr) return 1;
     int cmp2 = range.Max().compare(next->Guard());
-    return cmp2 < 0;
+    if (cmp2 >= 0) return 0;
+    if (!no_overlap) return 1;
+    Slice buffer_max = level_[height]->buffer_.Max();
+    int cmp3 = range.Min().compare(buffer_max);
+    return cmp3 > 0;
   }
   void Add(const SBSOptions& options, size_t height, ValuePtr range) {
     level_[height]->Add(range);
-    if (Guard().compare(range->Min()) > 0)
+    if (guard_.compare("Undefined.") && Empty() || Guard().compare(range->Min()) > 0)
       guard_ = range->Min();
   }
   void Del(size_t height, ValuePtr range) {
@@ -150,6 +161,7 @@ struct SBSNode {
     assert(next != nullptr);
     assert(next->Height() == height+1);
     level_[height]->Absorb(*next->level_[height]);
+    Rebound();
     next->DecHeight();
   }
  public:
