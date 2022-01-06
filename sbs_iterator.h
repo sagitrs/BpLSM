@@ -189,6 +189,7 @@ struct SBSIterator {
       assert(ok);
       Add(options, e);
     }
+    return 1;
   }
   bool Del_(const SBSOptions& options, SBSNode::ValuePtr range, std::stack<SBSNode::ValuePtr>& stack) {
     SeekRange(*range);
@@ -201,6 +202,7 @@ struct SBSIterator {
     if (Current().TestState(options) > 0) {
       // delayed split.
       CheckSplit(options);
+      return 1;
     } else {
       Coordinates target = Current();
       bool shrink = Current().TestState(options) < 0;
@@ -243,12 +245,12 @@ struct SBSIterator {
           }
         }
       }
+      ResetToRoot();
       return 1;
     }
     // Since the path node may have changed, we always assume that 
     // the path information is no longer accessible and 
     // therefore return to the root node.
-    ResetToRoot();
   }
 
   void TargetIncStatistics(Counter::TypeLabel label, int size) { 
