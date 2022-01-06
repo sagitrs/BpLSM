@@ -87,7 +87,7 @@ struct SBSNode {
       guard_ = "Undefined.";
     }
   }
-  bool Empty() {
+  bool Empty() const {
     bool blank = true;
     for (auto node : level_)
       if (!node->buffer_.empty())
@@ -98,7 +98,7 @@ struct SBSNode {
   int TestState(const SBSOptions& options, size_t height) const { 
     if (height == 0) {
       if (level_[height]->buffer_.size() > 1) return 1;
-      if (level_[height]->buffer_.size() == 0) return -1;
+      if (!is_head_ && level_[height]->buffer_.size() == 0) return -1;
       return 0;
     }
     else 
@@ -108,13 +108,14 @@ struct SBSNode {
     int cmp1 = range.Min().compare(Guard());
     if (cmp1 < 0) return 0;
     auto next = Next(height);
-    if (next == nullptr) return 1;
-    int cmp2 = range.Max().compare(next->Guard());
+    int cmp2 = next == nullptr ? -1 : range.Max().compare(next->Guard());
     if (cmp2 >= 0) return 0;
     if (!no_overlap) return 1;
-    Slice buffer_max = level_[height]->buffer_.Max();
-    int cmp3 = range.Min().compare(buffer_max);
-    return cmp3 > 0;
+    for (auto r : level_[height]->buffer_) {
+      if (r->Compare(range) == BOverlap)
+        return 0;
+    }
+    return 1;
   }
   void Add(const SBSOptions& options, size_t height, ValuePtr range) {
     level_[height]->Add(range);
@@ -208,7 +209,7 @@ struct SBSNode {
   }
   std::string ToString() const {
     std::stringstream ss;
-    size_t width = 10;
+    size_t width = 16;
     std::vector<std::string> info[Height()];
     size_t max_lines = 0;
     for (size_t i = 0; i < Height(); ++i) {

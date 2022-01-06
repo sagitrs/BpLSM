@@ -87,6 +87,8 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
   }
 
   void GetInfo(std::vector<std::string>& set) const {
+    set.push_back(Min().ToString());
+    set.push_back(Max().ToString());
     for (auto i = begin(); i != end(); ++i)
       set.push_back(std::to_string((*i)->Identifier()));
   }

@@ -81,6 +81,20 @@ struct SBSkiplist {
     ss << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++";
     return ss.str();
   }
+  size_t size() const {
+    size_t total = 0;
+    auto iter = SBSIterator(head_);
+    iter.ResetToRoot();
+    for (int h = iter.Height(); h>= 0; --h) {
+      iter.ResetToRoot();
+      iter.JumpDown(h);
+      for (; iter.Valid(); iter.JumpNext()) {
+        total += iter.BufferSize();
+      }
+    }
+    return total;
+
+  }
   std::shared_ptr<SBSNode> GetHead() const { return head_; }
 };
 

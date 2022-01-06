@@ -15,6 +15,7 @@ struct Coordinates {
   
   SBSNode::SBSP Next() const { return node_->Next(height_); }
   void JumpNext() { node_ = Next(); }
+  void JumpDown(size_t down = 1) { assert(height_ >= down); height_ -= down; }
   int TestState(const SBSOptions& options) const { return node_->TestState(options, height_); }
   bool Fit(const Bounded& range, bool no_overlap) const { return node_->Fit(height_, range, no_overlap); }
   void Del(SBSNode::ValuePtr range) const { node_->Del(height_, range); }
@@ -50,6 +51,7 @@ struct SBSIterator {
   //TypeScorer scorer_;
   std::stack<Coordinates> history_, route_;
   Coordinates& Current() { return history_.top(); }
+  Coordinates Current() const { return history_.top(); }
   void Push(const Coordinates& coor) {
     history_.push(coor);
     route_.push(coor);
@@ -158,7 +160,7 @@ struct SBSIterator {
   }
  public:
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) {
-    SeekRange(*range);
+    SeekRange(*range, true);
     LoadRoute();
     Current().Add(options, range);
     CheckSplit(options);
@@ -180,8 +182,6 @@ struct SBSIterator {
   // Assume: The current node contains the target value.
   // Delete a value within the current node which is the same as the given value.
   // This may recursively trigger a merge operation and possibly a split operation.
-  // Assert: Already SeekRange().
-  // Assert: Already SeekValue().
   bool Del(const SBSOptions& options, SBSNode::ValuePtr range) {
     std::stack<SBSNode::ValuePtr> s;
     bool ok = Del_(options, range, s);
@@ -210,35 +210,33 @@ struct SBSIterator {
       return 1;
     } else {
       Coordinates target = Current();
-      bool shrink = Current().TestState(options) < 0;
       while (history_.size() > 1) {
         bool shrink = Current().TestState(options) < 0;
-        if (!shrink) break;
-
         Coordinates target = Current();
         history_.pop();
-        
         SBSNode::SBSP st = Current().node_;
         SBSNode::SBSP ed = Current().Next();
         size_t h = target.height_;
-        SBSNode::SBSP prev = nullptr;
-        SBSNode::SBSP next = target.Next() == ed ? nullptr : target.Next();
-        if (target.node_ != st) { 
-          for (Coordinates i = Coordinates(st, h); i.node_ != ed; i.JumpNext())
-            if (i.Next() == target.node_) {
-              prev = i.node_;
-              break;
-            }
-          assert(prev != nullptr);
-        }
-        if (prev && (!next || prev->Width(h) < next->Width(h)))
-          target.node_ = prev;
-        else
-          assert(next != nullptr);
-        target.AbsorbNext(options);
-        // Check if this node should split.
-        if (target.TestState(options) > 0 && !target.IsDirty()) {
-          target.SplitNext(options);
+        if (shrink) {
+          SBSNode::SBSP prev = nullptr;
+          SBSNode::SBSP next = target.Next() == ed ? nullptr : target.Next();
+          if (target.node_ != st) { 
+            for (Coordinates i = Coordinates(st, h); i.node_ != ed; i.JumpNext())
+              if (i.Next() == target.node_) {
+                prev = i.node_;
+                break;
+              }
+            assert(prev != nullptr);
+          }
+          if (prev && (!next || prev->Width(h) < next->Width(h)))
+            target.node_ = prev;
+          else
+            assert(next != nullptr);
+          target.AbsorbNext(options);
+          // Check if this node should split.
+          if (target.TestState(options) > 0 && !target.IsDirty()) {
+            target.SplitNext(options);
+          }
         }
         // Check if files in buffer can be placed in under level.
         for (auto element : Current().Buffer()) {
@@ -249,6 +247,7 @@ struct SBSIterator {
             }
           }
         }
+        if (!shrink) break;
       }
       ResetToRoot();
       return 1;
@@ -262,6 +261,20 @@ struct SBSIterator {
     LoadRoute();
     Current().IncStatistics(label, size); 
   }
+
+  void JumpDown(int down = 1) {
+    auto node = Current();
+    node.JumpDown(down);
+    history_.push(node);
+  }
+  void JumpNext() {
+    auto node = Current();
+    node.JumpNext();
+    history_.push(node);
+  }
+  bool Valid() const { return Current().node_ != nullptr; }
+  size_t BufferSize() const { return Current().Buffer().size(); }
+  size_t Height() const { return Current().height_; }
   std::string ToString() {
     LoadRoute();
     std::stringstream ss;
