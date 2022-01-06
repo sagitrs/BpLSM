@@ -96,20 +96,23 @@ struct SBSkiplist {
     iter.Del(*options_, target);
     return 1;
   }
-  void PickFilesByScore(std::shared_ptr<Scorer> scorer, int& height, 
-                        BoundedValueContainer* container) {
+  double PickFilesByScore(std::shared_ptr<Scorer> scorer, int& height, 
+                        BoundedValueContainer* container = nullptr) {
     auto iter = SBSIterator(head_);
-    iter.SeekScore(scorer);
+    double max_score = iter.SeekScore(scorer);
     height = iter.Height();
-    iter.GetRangesInNode(container[0]);
 
-    assert(height != 0);
-    for (iter.JumpDown(); iter.Valid() && iter.Guard().compare(container[0].Max()) <= 0; iter.JumpNext()) {
-      iter.GetRangesInNode(container[1]);
-      iter.GetChildGuardInNode(container[2]);
+    if (container != nullptr) {
+      iter.LoadRoute();
+      iter.GetRangesInCurrent(container[0]);
+
+      assert(height != 0);
+      for (iter.JumpDown(); iter.Valid() && iter.Guard().compare(container[0].Max()) <= 0; iter.JumpNext()) {
+        iter.GetRangesInCurrent(container[1]);
+        iter.GetChildGuardInCurrent(container[2]);
+      } 
     }
-
-    
+    return max_score;
   }
   std::string ToString() const {
     std::stringstream ss;

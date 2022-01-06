@@ -127,7 +127,7 @@ struct SBSIterator {
   // Add a value to the current node.
   // This may recursively trigger a split operation.
   // Assert: Already SeekRange().
-  void SeekScore(std::shared_ptr<Scorer> scorer) {
+  double SeekScore(std::shared_ptr<Scorer> scorer) {
     ResetToRoot();
     size_t max_height = Current().height_;
     double max_score = 0;
@@ -149,6 +149,7 @@ struct SBSIterator {
       bool ok = SeekNode(target);
       assert(ok);
     }
+    return max_score;
   }
  private:
   void CheckSplit(const SBSOptions& options) {
@@ -171,12 +172,10 @@ struct SBSIterator {
   }
  private:
  public:
-  void GetRangesInNode(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) {
-    LoadRoute();
+  void GetRangesInCurrent(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) {
     Current().GetRanges(results, range);
   }
-  void GetChildGuardInNode(BoundedValueContainer& results) {
-    LoadRoute();
+  void GetChildGuardInCurrent(BoundedValueContainer& results) {
     if (Current().height_ == 0) return;
     auto ed = Current();
     ed.JumpNext();
