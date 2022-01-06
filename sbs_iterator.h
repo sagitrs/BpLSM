@@ -132,7 +132,7 @@ struct SBSIterator {
     size_t max_height = Current().height_;
     double max_score = 0;
     Coordinates target(Current());
-    for (int height = max_height; height >= 0; --height) {
+    for (int height = max_height; height > 0; --height) {
       for (auto node = Current().node_; node != nullptr; node = node->Next(height)) {
         double s = scorer->Calculate(node, height);
         if (s > max_score) {
@@ -143,8 +143,12 @@ struct SBSIterator {
       }
       if (max_score == 1) break;
     }
-    bool ok = SeekNode(target);
-    assert(ok);
+    if (max_score == 0) { 
+      ResetToRoot(); 
+    } else {
+      bool ok = SeekNode(target);
+      assert(ok);
+    }
   }
  private:
   void CheckSplit(const SBSOptions& options) {
@@ -170,6 +174,18 @@ struct SBSIterator {
   void GetRangesInNode(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) {
     LoadRoute();
     Current().GetRanges(results, range);
+  }
+  void GetChildGuardInNode(BoundedValueContainer& results) {
+    LoadRoute();
+    if (Current().height_ == 0) return;
+    auto ed = Current();
+    ed.JumpNext();
+    auto st = Current();
+    for (st.JumpDown(); st.node_ != ed.node_; st.JumpNext()) {
+      auto cp = st.node_->pacesetter_;
+      if (cp != nullptr)
+        results.push_back(cp);
+    }
   }
   // Get all the values on the path that are overlap with the given range.
   void GetRangesOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) {
@@ -272,9 +288,6 @@ struct SBSIterator {
     node.JumpNext();
     history_.push(node);
   }
-  bool Valid() const { return Current().node_ != nullptr; }
-  size_t BufferSize() const { return Current().Buffer().size(); }
-  size_t Height() const { return Current().height_; }
   std::string ToString() {
     LoadRoute();
     std::stringstream ss;
@@ -285,6 +298,11 @@ struct SBSIterator {
     LoadRoute();
     return ss.str();
   }
+  bool Valid() const { return Current().node_ != nullptr; }
+  size_t BufferSize() const { return Current().Buffer().size(); }
+  size_t Height() const { return Current().height_; }
+  Slice Guard() const { return Current().node_->Guard(); }
+  std::shared_ptr<BoundedValue> Pacesetter() const { return Current().node_->pacesetter_; }
 };
 
 

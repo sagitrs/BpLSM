@@ -26,26 +26,30 @@ struct SBSNode {
  private:
   std::shared_ptr<SBSOptions> options_;
   bool is_head_;
-  Slice guard_;
+  std::shared_ptr<BoundedValue> pacesetter_;
   std::vector<std::shared_ptr<InnerNode>> level_;
  public:
   // build head node.
   SBSNode(std::shared_ptr<SBSOptions> options, size_t height)
   : options_(options), 
     is_head_(true),
-    guard_(""),
+    pacesetter_(nullptr),
     level_({}) {
       for (size_t i = 0; i < height; ++i) {
         level_.push_back(std::make_shared<LevelNode>(std::dynamic_pointer_cast<StatisticsOptions>(options), nullptr));
       }
+      Rebound();
     }
   // build leaf node.
   SBSNode(std::shared_ptr<SBSOptions> options, SBSP next) 
   : options_(options), 
     is_head_(false), 
-    guard_("Undefined."), 
+    pacesetter_(nullptr), 
     level_({std::make_shared<LevelNode>(std::dynamic_pointer_cast<StatisticsOptions>(options), next)}) {}
-  Slice Guard() const { return is_head_ ? Slice("") : guard_; }
+  Slice Guard() const { 
+    if (is_head_) return "";
+    return pacesetter_->Min(); 
+  }
   size_t Height() const { return level_.size(); } 
   SBSP Next(size_t k, size_t recursive = 1) const { 
     SBSP next = level_[k]->next_;
@@ -71,21 +75,14 @@ struct SBSNode {
     return false;
   }
   void Rebound() {
-    bool blank = true;
-    for (auto node : level_) {
-      for (auto range : node->buffer_) {
-        if (blank) { 
-          guard_ = range->Min(); 
-          blank = 0; 
-        } else if (range->Min().compare(guard_) < 0) {
-          guard_ = range->Min();
+    if (is_head_) {
+      return;
+    }
+    for (auto node : level_)
+      for (auto range : node->buffer_)
+        if (pacesetter_ == nullptr || range->Min().compare(pacesetter_->Min()) < 0) { 
+          pacesetter_ = range; 
         }
-      }
-    }
-    if (blank) {
-      // error state, must be removed immediately.
-      guard_ = "Undefined.";
-    }
   }
   bool Empty() const {
     bool blank = true;
@@ -119,8 +116,8 @@ struct SBSNode {
   }
   void Add(const SBSOptions& options, size_t height, ValuePtr range) {
     level_[height]->Add(range);
-    if (guard_.compare("Undefined.") && Empty() || Guard().compare(range->Min()) > 0)
-      guard_ = range->Min();
+    if (pacesetter_ == nullptr || Guard().compare(range->Min()) > 0)
+      pacesetter_ = range;
   }
   void Del(size_t height, ValuePtr range) {
     level_[height]->Del(range);

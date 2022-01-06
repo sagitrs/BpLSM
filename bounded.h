@@ -78,4 +78,9 @@ struct BRealBounded : virtual public Bounded {
   bool OnBound(const Bounded& target) { return OnBound(target.Min(), target.Max()); }
 };
 
+struct FakeBoundedValue : public BRealBounded, virtual public Value {
+  FakeBoundedValue(const Slice& min, const Slice& max)
+  : BRealBounded(min, max) {} 
+};
+
 }

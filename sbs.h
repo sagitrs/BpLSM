@@ -15,17 +15,40 @@ struct LeveledScorer : public Scorer {
   void Init(std::shared_ptr<SBSNode> head) {  status_.head_height_ = head->Height();  }
   size_t max_level0_size_ = 8;
   size_t max_tiered_runs_ = 1;
-  size_t max_files_ = 20;
+  size_t base_children_ = 10;
+
+  bool level0_found_ = false;
  public:
   LeveledScorer(std::shared_ptr<SBSNode> head) { Init(head); }
-  size_t Level() const { return status_.head_height_ - Height(); }
+  virtual double CalculateByBufferSize(std::shared_ptr<SBSNode> node, size_t height, size_t buffer_size) {
+    Scorer::SetNode(node, height);
+    double score = 0;
+    if (!level0_found_) {
+      score = buffer_size > max_level0_size_ ? 1 : 0;
+    } else {
+      double rest = (0.0 + max_tiered_runs_ - buffer_size) / max_tiered_runs_;
+      if (rest < 0) 
+        score = 1;
+      else {
+        double scale = 1.0 * Width() / base_children_;
+        score = 1.0 - rest * scale;
+      }
+    }
+    if (score > 1) score = 1;
+    if (score < 0) score = 0;
+
+    if (buffer_size > 0) {
+      level0_found_ = 1;
+    }
+    return score;
+  }
   virtual double Calculate(std::shared_ptr<SBSNode> node, size_t height) override {
     Scorer::SetNode(node, height);
-    if (Level() == 0) 
-      return BufferSize() > max_level0_size_ ? 1 : 0;
-    if (BufferSize() > max_tiered_runs_)
-      return 1;
-    return 1.0 * (BufferSize() + Width()) / max_files_;
+    return CalculateByBufferSize(node, height, BufferSize());
+  }
+  bool CalculateIfFull(std::shared_ptr<SBSNode> node, size_t height) {
+    Scorer::SetNode(node, height);
+    return CalculateByBufferSize(node, height, BufferSize() + 1) == 1;
   }
 };
 
@@ -40,7 +63,7 @@ struct SBSkiplist {
  public:
   SBSkiplist(const SBSOptions& options) 
   : options_(std::make_shared<SBSOptions>(options)),
-    head_(std::make_shared<SBSNode>(options_, 7)),
+    head_(std::make_shared<SBSNode>(options_, 6)),
     iter_(head_) {}
 
   void Put(TypeValuePtr value) {
@@ -55,6 +78,11 @@ struct SBSkiplist {
     iter.SeekRange(*target);
     return iter.SeekValue(target);
   }
+  int SeekHeight(const Bounded& range) {
+    auto iter = SBSIterator(head_);
+    iter.SeekRange(range, true);
+    return iter.Height();
+  }
   void Get(const Bounded& range, BoundedValueContainer& container) {
     auto iter = SBSIterator(head_);
     iter.SeekRange(range);
@@ -68,10 +96,20 @@ struct SBSkiplist {
     iter.Del(*options_, target);
     return 1;
   }
-  void PickFilesByScore(std::shared_ptr<Scorer> scorer, BoundedValueContainer& container) {
+  void PickFilesByScore(std::shared_ptr<Scorer> scorer, int& height, 
+                        BoundedValueContainer* container) {
     auto iter = SBSIterator(head_);
     iter.SeekScore(scorer);
-    iter.GetRangesInNode(container);
+    height = iter.Height();
+    iter.GetRangesInNode(container[0]);
+
+    assert(height != 0);
+    for (iter.JumpDown(); iter.Valid() && iter.Guard().compare(container[0].Max()) <= 0; iter.JumpNext()) {
+      iter.GetRangesInNode(container[1]);
+      iter.GetChildGuardInNode(container[2]);
+    }
+
+    
   }
   std::string ToString() const {
     std::stringstream ss;
