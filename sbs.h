@@ -126,9 +126,11 @@ struct SBSkiplist {
     size_t total = 0;
     auto iter = SBSIterator(head_);
     iter.ResetToRoot();
-    for (int h = iter.Height(); h>= 0; --h) {
+    size_t H = iter.Height();
+    for (int h = H; h >= 0; --h) {
       iter.ResetToRoot();
-      iter.JumpDown(h);
+      for(size_t i = 0; i < H - h; ++i)
+        iter.JumpDown();
       for (; iter.Valid(); iter.JumpNext()) {
         total += iter.BufferSize();
       }

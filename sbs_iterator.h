@@ -285,7 +285,19 @@ struct SBSIterator {
   void JumpNext() {
     auto node = Current();
     node.JumpNext();
-    history_.push(node);
+    if (node.node_ == nullptr) {
+      history_.pop();
+      history_.push(node);
+      return;
+    }
+    int h_max = node.node_->Height();
+    int h_curr = node.height_; 
+    assert(h_max > h_curr & h_curr >= 0);
+    for (size_t i = h_curr; i < h_max; ++i)
+      history_.pop();
+    for (int i = h_max-1; i >= h_curr; --i)
+      history_.push(Coordinates(node.node_, i));
+    //history_.push(node);
   }
   std::string ToString() {
     LoadRoute();
