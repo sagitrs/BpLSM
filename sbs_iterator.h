@@ -28,9 +28,12 @@ struct Coordinates {
   void IncStatistics(Counter::TypeLabel label, int size) { node_->level_[height_]->node_stats_->Inc(label, size); }
   void GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
     auto& buffer = node_->level_[height_]->buffer_;
+    auto& statistics = node_->level_[height_]->node_stats_;
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
-      if (key == nullptr || (*i)->Compare(*key) == BOverlap)
+      if (key == nullptr || (*i)->Compare(*key) == BOverlap) {
         results.Add(*i);
+        statistics->Inc(DefaultCounterType::GetCount, 1);
+      }
     }
   }
   BoundedValueContainer& Buffer() { return node_->level_[height_]->buffer_; }
@@ -58,6 +61,7 @@ struct SBSIterator {
   }
   bool SeekNode(Coordinates target) {
     ResetToRoot();
+    if (target == Current()) return 1;
     BRealBounded range(target.node_->Guard(), target.node_->Guard());
     while (Current().Fit(range, false) && Current().height_ > 0) {
       SBSNode::SBSP st = Current().node_;
@@ -169,6 +173,14 @@ struct SBSIterator {
     LoadRoute();
     Current().Add(options, range);
     CheckSplit(options);
+  }
+  void AddBuffered(const SBSOptions& options, SBSNode::ValuePtr range) {
+    ResetToRoot();
+    Current().Add(options, range);
+  }
+  void GetBuffered(BoundedValueContainer& results) {
+    ResetToRoot();
+    Current().GetRanges(results);
   }
  private:
  public:

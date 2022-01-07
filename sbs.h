@@ -66,11 +66,23 @@ struct SBSkiplist {
     head_(std::make_shared<SBSNode>(options_, 6)),
     iter_(head_) {}
 
-  void Put(TypeValuePtr value) {
+  void Put(TypeValuePtr value, bool buffered = false) {
     auto iter = SBSIterator(head_);
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
+    if (buffered) { iter.AddBuffered(*options_, target); return; }
     iter.Add(*options_, target);
-    iter.TargetIncStatistics(DefaultCounterType::PutCount, 1);
+    iter.TargetIncStatistics(DefaultCounterType::PutCount, 1);                          // Put Statistics.
+  }
+  void BufferClear() {
+    auto iter = SBSIterator(head_);
+    BoundedValueContainer container;
+    iter.GetBuffered(container);
+    for (auto range : container) {
+      iter.Del(*options_, range);
+    }
+    for (auto range : container) {
+      iter.Add(*options_, range);
+    }
   }
   bool Contains(TypeValuePtr value) {
     auto iter = SBSIterator(head_);

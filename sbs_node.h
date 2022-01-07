@@ -153,6 +153,7 @@ struct SBSNode {
         IncHeight(level_[height]->node_stats_->options_, nullptr);
       }
     }
+    level_[height]->node_stats_->Inc(DefaultCounterType::SplitCount, 1);                //    Split Statistics.
   }
   void AbsorbNext(const SBSOptions& options, size_t height) {
     auto next = Next(height);
