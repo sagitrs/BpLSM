@@ -106,11 +106,14 @@ struct SBSkiplist {
       iter.LoadRoute();
       iter.GetRangesInCurrent(container[0]);
 
-      assert(height != 0);
+      assert(height > 0);
+      iter.LoadRoute();
       for (iter.JumpDown(); iter.Valid() && iter.Guard().compare(container[0].Max()) <= 0; iter.JumpNext()) {
         iter.GetRangesInCurrent(container[1]);
-        iter.GetChildGuardInCurrent(container[2]);
       } 
+      iter.LoadRoute();
+      if (height > 1)
+        iter.GetChildGuardInCurrent(container[2]);
     }
     return max_score;
   }

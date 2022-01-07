@@ -221,7 +221,7 @@ struct SBSNode {
       }
       ss << std::endl;
     }
-    std::string divider((width+1)*Height(), '-');
+    std::string divider((width+1)*Height()+1, '-');
     ss << divider << std::endl;
     return ss.str();
   }
