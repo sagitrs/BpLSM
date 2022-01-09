@@ -16,6 +16,8 @@ struct Coordinates {
   SBSNode::SBSP Next() const { return node_->Next(height_); }
   void JumpNext() { node_ = Next(); }
   void JumpDown(size_t down = 1) { assert(height_ >= down); height_ -= down; }
+  bool Valid() const { return node_ != nullptr; }
+
   int TestState(const SBSOptions& options) const { return node_->TestState(options, height_); }
   bool Fit(const Bounded& range, bool no_overlap) const { return node_->Fit(height_, range, no_overlap); }
   void Del(SBSNode::ValuePtr range) const { node_->Del(height_, range); }
@@ -25,14 +27,17 @@ struct Coordinates {
   void AbsorbNext(const SBSOptions& options) { node_->AbsorbNext(options, height_); }
   //bool operator ==(const Coordinates& b) { return node_ == b.node_; }
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
-  void IncStatistics(Counter::TypeLabel label, int size) { node_->level_[height_]->node_stats_->Inc(label, size); }
+  void IncStatistics(const Slice& key, Counter::TypeLabel label, int size) { 
+    node_->level_[height_]->node_stats_->Inc(key, label, size); 
+  }
   void GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
     auto& buffer = node_->level_[height_]->buffer_;
     auto& statistics = node_->level_[height_]->node_stats_;
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
       if (key == nullptr || (*i)->Compare(*key) == BOverlap) {
         results.Add(*i);
-        statistics->Inc(DefaultCounterType::GetCount, 1);
+        Slice guard = (*i)->Min();
+        statistics->Inc(guard, DefaultCounterType::GetCount, 1);
       }
     }
   }
@@ -49,64 +54,106 @@ struct Coordinates {
   }
 };
 
-struct SBSIterator {
-  private:
-  //TypeScorer scorer_;
-  std::stack<Coordinates> history_, route_;
-  Coordinates& Current() { return history_.top(); }
-  Coordinates Current() const { return history_.top(); }
-  void Push(const Coordinates& coor) {
-    history_.push(coor);
-    route_.push(coor);
+struct CoordinatesStack : private std::vector<Coordinates> {
+ public: 
+  size_t Size() const { return size(); }
+  bool Empty() const { return empty(); }
+  void Push(const Coordinates& coor) { push_back(coor); }
+  Coordinates& Top() { return *rbegin(); }
+  Coordinates& Bottom(){ return *begin(); }
+  const Coordinates& Top() const { return *rbegin(); }
+  const Coordinates& Bottom() const { return *begin(); }
+  Coordinates Pop() {
+    assert(!empty());
+    Coordinates result = *rbegin();
+    pop_back();
+    return result;
   }
-  bool SeekNode(Coordinates target) {
-    ResetToRoot();
-    if (target == Current()) return 1;
-    BRealBounded range(target.node_->Guard(), target.node_->Guard());
-    while (Current().Fit(range, false) && Current().height_ > 0) {
-      SBSNode::SBSP st = Current().node_;
-      SBSNode::SBSP ed = Current().Next();
-      size_t height = Current().height_ - 1;
-      bool dive = false;
-      for (Coordinates c = Coordinates(st, height); c.node_ != ed; c.JumpNext()) 
-        if (c.Fit(range, false)) {
-          Push(c);
-          dive = true;
-          if (c == target) return 1;
-          break;
-        }
-      if (!dive) break;
+  void Resize(size_t k) { resize(k); }
+  Coordinates& operator[](size_t k) { return (*this)[k]; }
+  const Coordinates& operator[](size_t k) const { return (*this)[k]; }
+  Coordinates& reverse_at(size_t k) { return (*this)[size() - 1 - k]; }
+ public:// iterator related:
+  struct CoordinatesStackIterator {
+   private:
+    CoordinatesStack *stack_;
+    int curr_;
+   public:
+    CoordinatesStackIterator(CoordinatesStack* stack) : stack_(stack), curr_(-1) {}
+    bool Valid() const { return (0 <= curr_) && (curr_ < stack_->size()); }
+    void SeekToFirst() { curr_ = 0; }
+    void SeekToLast() { curr_ = stack_->size() - 1; }
+    void Prev() { curr_ --; }
+    void Next() { curr_ ++; }
+    
+    Coordinates& Current() const { assert(Valid()); return (*stack_)[curr_]; }
+    size_t CurrentCursor() const { assert(Valid()); return curr_; }
+  };
+
+  void SetToIterator(const CoordinatesStackIterator& iter) { resize(iter.CurrentCursor() + 1); }
+  std::shared_ptr<CoordinatesStackIterator> NewIterator() { 
+    return std::make_shared<CoordinatesStackIterator>(this); 
+  }
+};
+
+struct SBSIterator {
+ private:
+  CoordinatesStack s_;
+  //-------------------------------------------------------------
+  size_t SBSHeight() const { assert(Valid()); return s_.Bottom().height_; }
+  //----------------------iterator operation---------------------
+  bool Valid() const { 
+    return 1 <= s_.Size() 
+        && s_.Size() <= s_.Bottom().height_
+        && s_.Top().Valid(); 
+  }
+  void SeekToRoot() { s_.Resize(1); }
+  void Next(size_t recursive = 1) {
+    for (size_t i = 1; i <= recursive; ++i) {
+      auto& curr = s_.Top();
+      curr.JumpNext();
+      if (!curr.Valid()) return;
+      
+      size_t height = curr.node_->Height();
+      size_t depth = s_.Size();
+      for (size_t h = 1; h < height; ++h) 
+        s_.reverse_at(h) = Coordinates(curr.node_, h);
     }
-    if (Current().height_ == 0 && Current() == target)
-      return 1;
+  }
+  virtual void Prev() = delete;
+  void Dive(size_t recursive = 1) {
+    auto& curr = s_.Top();
+    assert(curr.height_ > 0);
+    for (size_t i = 1; i <= recursive; ++i)
+      s_.Push(Coordinates(curr.node_, curr.height_ - i));
+  }
+  // ---------------------iterator operation---------------------
+  bool SeekNode(Coordinates target) {
+    BRealBounded bound(target.node_->Guard(), target.node_->Guard());
+    SeekRange(bound, false);
+    auto iter = s_.NewIterator();
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      if (iter->Current() == target) 
+        return 1;
+    }
     return 0;
   }
   public:
-  SBSIterator(SBSNode::SBSP head, int height = -1) 
-  : //scorer_(),
-    history_() {
-      //scorer_.SetGlobalStatus(head->Height());
-      Push(Coordinates(head, height < 0 ? head->Height()-1 : height));
+  SBSIterator(SBSNode::SBSP head, int height = -1) : s_() {
+    s_.Push(Coordinates(head, height < 0 ? head->Height()-1 : height));
   }
-  void ResetToRoot() { 
-    while (route_.size() > 1) route_.pop();
-    LoadRoute();
-  }
-  // Assert: Already SeekRange().
-  void LoadRoute() { history_ = route_; }
-  void StoreRoute() { route_ = history_; }
   // Jump to a node within the tree that meets the requirements 
   // and save all nodes on the path.
   void SeekRange(const Bounded& range, bool no_level0_overlap = false) {
-    ResetToRoot();
-    while (Current().Fit(range, false) && Current().height_ > 0) {
-      SBSNode::SBSP st = Current().node_;
-      SBSNode::SBSP ed = Current().Next();
-      size_t height = Current().height_ - 1;
+    s_.Resize(1);
+    while (s_.Top().Fit(range, false) && s_.Top().height_ > 0) {
+      size_t height = s_.Top().height_ - 1;
+      auto st = Coordinates(s_.Top().node_, height);
+      auto ed = Coordinates(s_.Top().Next(), height);
       bool dive = false;
-      for (Coordinates c = Coordinates(st, height); c.node_ != ed; c.JumpNext()) 
+      for (Coordinates c = st; !(c == ed); c.JumpNext()) 
         if (c.Fit(range, c.height_ == 0 && no_level0_overlap)) {
-          Push(c);
+          s_.Push(c);
           dive = true;
           break;
         }
@@ -116,43 +163,34 @@ struct SBSIterator {
   // Find elements on the path that exactly match the target object 
   // (including ranges and values).
   // Assert: Already SeekRange().
-  bool SeekValue(SBSNode::ValuePtr value) {
-    LoadRoute();
-    while (!history_.empty()) {
-      bool found = Current().Contains(value);
-      if (found) {
-        StoreRoute();
+  bool RouteContainsValue(SBSNode::ValuePtr value) {
+    auto iter = s_.NewIterator();
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      if (iter->Current().Contains(value))
         return 1;
-      }
-      history_.pop();
-    } 
+    }
     return 0;
   }
   // Add a value to the current node.
   // This may recursively trigger a split operation.
   // Assert: Already SeekRange().
   double SeekScore(std::shared_ptr<Scorer> scorer) {
-    ResetToRoot();
-    size_t max_height = Current().height_;
-    double max_score = 0;
-    Coordinates target(Current());
-    for (int height = max_height; height > 0; --height) {
-      for (auto node = Current().node_; node != nullptr; node = node->Next(height)) {
-        double s = scorer->Calculate(node, height);
+    s_.Resize(1);
+    CoordinatesStack max_stack(s_);
+    double max_score = scorer->Calculate(s_.Bottom().node_, s_.Bottom().height_);
+    for (int height = SBSHeight() - 1; height >= 0; --height) {
+      s_.Resize(1);
+      for (Dive(SBSHeight() - 1 - height); Valid(); Next()) {
+        double s = scorer->Calculate(s_.Top().node_, height);
         if (s > max_score) {
           max_score = s;
-          target = Coordinates(node, height);
+          max_stack = s_;
           if (s == 1) break;
         }
       }
       if (max_score == 1) break;
     }
-    if (max_score == 0) { 
-      ResetToRoot(); 
-    } else {
-      bool ok = SeekNode(target);
-      assert(ok);
-    }
+    s_ = max_stack;
     return max_score;
   }
  private:
@@ -284,9 +322,12 @@ struct SBSIterator {
     // therefore return to the root node.
   }
 
-  void TargetIncStatistics(Counter::TypeLabel label, int size) { 
+  void IncStatistics(const Slice& key, Counter::TypeLabel label, int size) {
+    Current().IncStatistics(key, label, size);
+  }
+  void TargetIncStatistics(const Slice& key, Counter::TypeLabel label, int size) { 
     LoadRoute();
-    Current().IncStatistics(label, size); 
+    IncStatistics(key, label, size);
   }
 
   void JumpDown(int down = 1) {
@@ -294,23 +335,7 @@ struct SBSIterator {
     node.JumpDown(down);
     history_.push(node);
   }
-  void JumpNext() {
-    auto node = Current();
-    node.JumpNext();
-    if (node.node_ == nullptr) {
-      history_.pop();
-      history_.push(node);
-      return;
-    }
-    int h_max = node.node_->Height();
-    int h_curr = node.height_; 
-    assert(h_max > h_curr & h_curr >= 0);
-    for (size_t i = h_curr; i < h_max; ++i)
-      history_.pop();
-    for (int i = h_max-1; i >= h_curr; --i)
-      history_.push(Coordinates(node.node_, i));
-    //history_.push(node);
-  }
+  
   std::string ToString() {
     LoadRoute();
     std::stringstream ss;

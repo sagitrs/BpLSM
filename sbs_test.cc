@@ -52,7 +52,8 @@ TEST(SBSTest, Simple) {
   //---------------------------------------
   container.clear();
   auto scorer = std::make_shared<sagitrs::LeveledScorer>(list.GetHead());
-  list.PickFilesByScore(scorer, container);
+  int height = -1;
+  list.PickFilesByScore(scorer, height, &container);
   std::cout << "PickCompaction=[" << container.ToString() << "]" << std::endl;
   //---------------------------------------
   for (size_t i = 1; i <= 8; ++i) {

@@ -153,13 +153,13 @@ struct SBSNode {
         IncHeight(level_[height]->node_stats_->options_, nullptr);
       }
     }
-    level_[height]->node_stats_->Inc(DefaultCounterType::SplitCount, 1);                //    Split Statistics.
   }
   void AbsorbNext(const SBSOptions& options, size_t height) {
     auto next = Next(height);
     assert(next != nullptr);
     assert(next->Height() == height+1);
-    level_[height]->Absorb(*next->level_[height]);
+    next->level_[height]->SetImmutableStatistics(next->Guard());
+    level_[height]->Absorb(next->level_[height]);
     Rebound();
     next->DecHeight();
   }
@@ -197,7 +197,7 @@ struct SBSNode {
       }
     } else if (type == StatInfo) {
       for (size_t i = 0; i < Height(); ++i) {
-        std::string data = std::to_string(level_[i]->node_stats_->GetCurrent(DefaultCounterType::PutCount));
+        std::string data = std::to_string(level_[i]->node_stats_->Get(TypeHistorical, DefaultCounterType::PutCount));
         std::string suffix(data.size() > width ? 0 : width - data.size(), ' ');
         ss << data << suffix;
       }
@@ -211,7 +211,7 @@ struct SBSNode {
     std::vector<std::string> info[Height()];
     size_t max_lines = 0;
     for (size_t i = 0; i < Height(); ++i) {
-      level_[i]->GetInfo(info[i]);
+      level_[i]->GetStringLog(info[i]);
       if (info[i].size() > max_lines) max_lines = info[i].size();
     }
     for (size_t i = 0; i < max_lines; ++i) {

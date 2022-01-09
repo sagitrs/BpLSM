@@ -71,7 +71,7 @@ struct SBSkiplist {
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
     if (buffered) { iter.AddBuffered(*options_, target); return; }
     iter.Add(*options_, target);
-    iter.TargetIncStatistics(DefaultCounterType::PutCount, 1);                          // Put Statistics.
+    iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
   }
   void BufferClear() {
     auto iter = SBSIterator(head_);

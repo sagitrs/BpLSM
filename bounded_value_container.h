@@ -86,7 +86,7 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
       Extend(*(*iter)); 
   }
 
-  void GetInfo(std::vector<std::string>& set) const {
+  void GetStringLog(std::vector<std::string>& set) const {
     set.push_back(Min().ToString());
     set.push_back(Max().ToString());
     for (auto i = begin(); i != end(); ++i)
@@ -94,7 +94,7 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
   }
   std::string ToString() const {
     std::vector<std::string> set;
-    GetInfo(set);
+    GetStringLog(set);
     std::stringstream ss;
     for (auto s : set) { ss << s << ";"; }
     return ss.str();
