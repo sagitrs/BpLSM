@@ -124,9 +124,11 @@ struct SBSNode {
     if (Guard().compare(range->Min()) == 0)
       Rebound();
   }
-  void IncHeight(std::shared_ptr<StatisticsOptions> stat_options, SBSP next) { 
-    auto tmp = std::make_shared<LevelNode>(stat_options, next);
+  void IncHeight(std::shared_ptr<Statistics> stats, SBSP next) { 
+    auto tmp = std::make_shared<LevelNode>(stats->options_, next);
     level_.push_back(tmp); 
+    auto &node = *level_.rbegin();
+    node->node_stats_->Inherit(stats, Guard());
   }
   void DecHeight() { level_.pop_back(); }
   void SplitNext(const SBSOptions& options, size_t height) {
@@ -135,6 +137,7 @@ struct SBSNode {
       assert(a.size() == 2);
       auto tmp = std::make_shared<SBSNode>(options_, Next(0));
       tmp->Add(options, 0, *a.rbegin());
+      tmp->level_[0]->node_stats_->Inherit(level_[0]->node_stats_, tmp->Guard());
       SetNext(0, tmp);
       a.Del(**a.rbegin());
     } else {
@@ -145,12 +148,14 @@ struct SBSNode {
       assert(reserve > 1);
       SBSP next = Next(height);
       SBSP middle = Next(height - 1, reserve);
-      middle->IncHeight(level_[height]->node_stats_->options_, next);
+      middle->IncHeight(level_[height]->node_stats_, next);
+      //middle->level_[height]->node_stats_->Inherit(level_[0]->node_stats_, tmp->Guard());
       SetNext(height, middle);
       // if this node is root node, increase height.
       if (is_head_ && height + 1 == Height()) {
+        assert(false && "Error : try to increase tree height.");
         assert(next == nullptr);
-        IncHeight(level_[height]->node_stats_->options_, nullptr);
+        IncHeight(level_[height]->node_stats_, nullptr);
       }
     }
   }
@@ -158,7 +163,7 @@ struct SBSNode {
     auto next = Next(height);
     assert(next != nullptr);
     assert(next->Height() == height+1);
-    next->level_[height]->SetImmutableStatistics(next->Guard());
+    
     level_[height]->Absorb(next->level_[height]);
     Rebound();
     next->DecHeight();

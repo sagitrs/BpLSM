@@ -64,11 +64,11 @@ struct BRealBounded : virtual public Bounded {
   virtual Slice Min() const override { return min_; }
   virtual Slice Max() const override { return max_; }
  public: 
-  virtual void Extend(const Slice& a, const Slice& b) {
+  void Extend(const Slice& a, const Slice& b) {
     if (a.compare(min_) < 0) min_ = a.ToString();
     if (b.compare(max_) > 0) max_ = b.ToString();
   }
-  virtual void Extend(const Bounded& target) { Extend(target.Min(), target.Max()); }
+  void Extend(const Bounded& target) { Extend(target.Min(), target.Max()); }
   virtual void Rebound(const Slice& a, const Slice& b) {
     min_ = a.ToString();
     max_ = b.ToString();

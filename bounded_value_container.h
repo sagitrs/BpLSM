@@ -25,14 +25,14 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
     return cmp;
   }
   void Add(std::shared_ptr<BoundedValue> value) { 
-    if (size() > 1)
-      Extend(*value);
+    if (size() > 0)
+      BRealBounded::Extend(*value);
     else
       BRealBounded::Rebound(*value);
 
     if (empty()) 
       push_back(value);
-    else if (Compare(value, at(0)) <= 0)
+    else if (Compare(value, *begin()) <= 0)
       insert(begin(), value);
     else {
       auto prev = begin();

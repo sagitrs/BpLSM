@@ -75,13 +75,13 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
  private:
   size_t time_slice_ = 60 * 1000 * 1000;
   size_t time_count_ = 10;
-  size_t time_slice_before_merge = 2;
+  size_t time_slice_before_merge_ = 2;
   double B = 0.1, I = 0.9, D = 0.0;
   static leveldb::Env* TimerEnv() { return leveldb::Env::Default(); }
  public:
   uint64_t TimeSliceMicroSecond() const override { return time_slice_; }
   uint64_t TimeSliceMaximumSize() const override { return time_count_; }
-  virtual uint64_t TimeBeforeMerge() const { return time_slice_before_merge * time_slice_; }
+  virtual uint64_t TimeBeforeMerge() const override { return time_slice_before_merge_ * time_slice_; }
   uint64_t NowTimeSlice() const override { return TimerEnv()->NowMicros() / time_slice_; }
   double kBaseWeight() const override { return B; }
   double kIntegrationWeight() const override { return I; }

@@ -17,29 +17,23 @@ struct LeveledScorer : public Scorer {
   size_t max_tiered_runs_ = 1;
   size_t base_children_ = 10;
 
-  bool level0_found_ = false;
+  int level0_height_ = -1;
  public:
   LeveledScorer(std::shared_ptr<SBSNode> head) { Init(head); }
   virtual double CalculateByBufferSize(std::shared_ptr<SBSNode> node, size_t height, size_t buffer_size) {
     Scorer::SetNode(node, height);
     double score = 0;
-    if (!level0_found_) {
-      score = buffer_size > max_level0_size_ ? 1 : 0;
+    if (height == 0) return 0;
+    if (level0_height_ == -1 || height == level0_height_) {
+      if (buffer_size == 0) return 0;
+      level0_height_ = height;
+      score = 1.0 * buffer_size / max_level0_size_;
     } else {
-      double rest = (0.0 + max_tiered_runs_ - buffer_size) / max_tiered_runs_;
-      if (rest < 0) 
-        score = 1;
-      else {
-        double scale = 1.0 * Width() / base_children_;
-        score = 1.0 - rest * scale;
-      }
+      score = 1.0 * buffer_size / max_tiered_runs_; 
     }
     if (score > 1) score = 1;
     if (score < 0) score = 0;
 
-    if (buffer_size > 0) {
-      level0_found_ = 1;
-    }
     return score;
   }
   virtual double Calculate(std::shared_ptr<SBSNode> node, size_t height) override {
@@ -71,7 +65,7 @@ struct SBSkiplist {
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
     if (buffered) { iter.AddBuffered(*options_, target); return; }
     iter.Add(*options_, target);
-    iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
+    //iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
   }
   void BufferClear() {
     auto iter = SBSIterator(head_);
@@ -87,20 +81,19 @@ struct SBSkiplist {
   bool Contains(TypeValuePtr value) {
     auto iter = SBSIterator(head_);
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    iter.SeekRange(*target);
-    return iter.SeekValue(target);
+    return iter.SeekBoundedValue(target);
   }
   int SeekHeight(const Bounded& range) {
     auto iter = SBSIterator(head_);
     iter.SeekRange(range, true);
-    return iter.Height();
+    return iter.Current().height_;
   }
   void Get(const Bounded& range, BoundedValueContainer& container) {
     auto iter = SBSIterator(head_);
     iter.SeekRange(range);
     //std::cout << iter.ToString() << std::endl;
     auto bound = std::make_shared<BRealBounded>(range.Min(), range.Max());
-    iter.GetRangesOnRoute(container, bound);
+    iter.GetBufferOnRoute(container, bound);
   }
   bool Del(TypeValuePtr value) {
     auto iter = SBSIterator(head_);
@@ -112,18 +105,16 @@ struct SBSkiplist {
                         BoundedValueContainer* container = nullptr) {
     auto iter = SBSIterator(head_);
     double max_score = iter.SeekScore(scorer);
-    height = iter.Height();
+    height = iter.Current().height_;
 
     if (container != nullptr) {
-      iter.LoadRoute();
-      iter.GetRangesInCurrent(container[0]);
-
+      iter.GetBufferInCurrent(container[0]);
       assert(height > 0);
-      iter.LoadRoute();
-      for (iter.JumpDown(); iter.Valid() && iter.Guard().compare(container[0].Max()) <= 0; iter.JumpNext()) {
-        iter.GetRangesInCurrent(container[1]);
+      for (iter.Dive(); 
+           iter.Valid() && iter.Current().node_->Guard().compare(container[0].Max()) <= 0; 
+           iter.Next()) {
+        iter.GetBufferInCurrent(container[1]);
       } 
-      iter.LoadRoute();
       if (height > 1)
         iter.GetChildGuardInCurrent(container[2]);
     }
@@ -140,14 +131,13 @@ struct SBSkiplist {
   size_t size() const {
     size_t total = 0;
     auto iter = SBSIterator(head_);
-    iter.ResetToRoot();
-    size_t H = iter.Height();
+    iter.SeekToRoot();
+    size_t H = iter.Current().height_;
+
     for (int h = H; h >= 0; --h) {
-      iter.ResetToRoot();
-      for(size_t i = 0; i < H - h; ++i)
-        iter.JumpDown();
-      for (; iter.Valid(); iter.JumpNext()) {
-        total += iter.BufferSize();
+      iter.SeekToRoot();
+      for (iter.Dive(H - h); iter.Valid(); iter.Next()) {
+        total += iter.Current().Buffer().size();
       }
     }
     return total;

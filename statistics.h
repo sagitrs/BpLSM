@@ -94,7 +94,10 @@ struct HistoricalStatistics {
   }
  public:
   HistoricalStatistics(std::shared_ptr<StatisticsOptions> options) 
-  : options_(options), history_() {}
+  : options_(options), 
+    history_(),
+    recent_(std::make_shared<Counter>()),
+    akasha_(std::make_shared<Counter>()) {}
   HistoricalStatistics(const HistoricalStatistics& stats) = delete;
 
   CPTR at(StatisticsType type) {
@@ -142,7 +145,7 @@ struct Statistics {
     std::string guard_;
     RangedHistoricalStatistics(const Slice& guard, std::shared_ptr<StatisticsOptions> options)
     : HistoricalStatistics(options), guard_(guard.ToString()) {}
-    bool Compare(const Slice& key) const { return Slice(guard_).compare(key); }
+    int Compare(const Slice& key) const { return Slice(guard_).compare(key); }
     Slice Guard() const { return guard_; }
   };
   typedef std::shared_ptr<RangedHistoricalStatistics> RHSP;
@@ -163,11 +166,24 @@ struct Statistics {
     for (auto rhsp : bro.shards_) InsertRHSP(rhsp);
     last_seperated_time_ = options_->NowTimeSlice();
   }
+  void SetGuard(const Slice& key) { shards_[0]->guard_ = key.ToString(); }
+  void Inherit(std::shared_ptr<Statistics> src, const Slice& guard) {
+    for (size_t i = 0; i < src->shards_.size(); ++i) {
+      auto shard = src->shards_[i];
+      if (shard->Compare(guard) > 0) {
+        assert(i > 0);
+        if (i > 1) i--;
+        for (size_t j = i; j < src->shards_.size(); ++j)
+          InsertRHSP(src->shards_[j]);
+        src->shards_.erase(src->shards_.begin() + i, src->shards_.end());
+        break;
+      }
+    }
+  }
   void GetStringLog(std::vector<std::string>& set) {
-    for (auto bc : shards_)
+    for (RHSP bc : shards_)
       bc->GetStringLog(set);
   }
-  void SetImmutable(const Slice& key) { }
  private:
   RHSP at(const Slice& key) {
     assert(!shards_.empty());
@@ -199,6 +215,7 @@ struct Statistics {
     }
     shards_.resize(1);
   }
+
 };
 
 }

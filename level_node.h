@@ -23,17 +23,23 @@ struct LevelNode {
     buffer_(), 
     node_stats_(std::make_shared<Statistics>(stat_options)) {}
     
-  void Add(std::shared_ptr<BoundedValue> value) { buffer_.Add(value); }
-  void Del(std::shared_ptr<BoundedValue> value) { buffer_.Del(*value); }
+  void Add(std::shared_ptr<BoundedValue> value) { 
+    buffer_.Add(value); 
+    node_stats_->SetGuard(buffer_.Min()); 
+  }
+  void Del(std::shared_ptr<BoundedValue> value) { 
+    buffer_.Del(*value); 
+    if (!buffer_.empty()) 
+      node_stats_->SetGuard(buffer_.Min()); 
+  }
   bool Contains(std::shared_ptr<BoundedValue> value) const { return buffer_.Contains(*value); }
   bool Overlap() const { return buffer_.Overlap(); }
   bool isDirty() const { return !buffer_.empty(); }
 
-  void SetImmutableStatistics(const Slice& guard) { node_stats_->SetImmutable(guard); }
   void Absorb(std::shared_ptr<LevelNode> node) {
     next_ = node->next_;
     buffer_.AddAll(node->buffer_);
-    node_stats_->Superposition(*node.node_stats_);
+    node_stats_->Superposition(*(node->node_stats_));
   }
   void GetStringLog(std::vector<std::string>& set) {
     node_stats_->GetStringLog(set);
