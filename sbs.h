@@ -110,13 +110,13 @@ struct SBSkiplist {
     if (container != nullptr) {
       iter.GetBufferInCurrent(container[0]);
       assert(height > 0);
+      if (height > 1)
+        iter.GetChildGuardInCurrent(container[2]);
       for (iter.Dive(); 
            iter.Valid() && iter.Current().node_->Guard().compare(container[0].Max()) <= 0; 
            iter.Next()) {
         iter.GetBufferInCurrent(container[1]);
       } 
-      if (height > 1)
-        iter.GetChildGuardInCurrent(container[2]);
     }
     return max_score;
   }

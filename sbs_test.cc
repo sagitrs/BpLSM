@@ -35,10 +35,10 @@ TEST(SBSTest, Simple) {
     list.Put(TempKV::FactoryBuild(i*10+0, i*10+0));
     //std::cout << list.ToString() << std::endl;
     list.Put(TempKV::FactoryBuild(i*10+9, i*10+9));
-    //std::cout << list.ToString() << std::endl;
+    std::cout << list.ToString() << std::endl;
   }
-  //std::cout << list.ToString() << std::endl;
-  //return;
+  std::cout << list.ToString() << std::endl;
+  return;
   for (size_t i = 1; i <= 9; ++i) {
     list.Put(TempKV::FactoryBuild(i*10+0, i*10+9));
     //std::cout << list.ToString() << std::endl;
@@ -70,9 +70,10 @@ TEST(SBSTest, Simple) {
   list.Del(TempKV::FactoryBuild(60, 69));
   std::cout << list.ToString() << std::endl;
   //---------------------------------------
-  //list.Del(TempKV::FactoryBuild(29, 29));
-  //list.Del(TempKV::FactoryBuild(20, 20));
-  //std::cout << list.ToString() << std::endl;
+  list.Del(TempKV::FactoryBuild(29, 29));
+  std::cout << list.ToString() << std::endl;
+  list.Del(TempKV::FactoryBuild(20, 20));
+  std::cout << list.ToString() << std::endl;
 }
 
 }  // namespace leveldb

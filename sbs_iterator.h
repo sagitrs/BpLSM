@@ -28,6 +28,7 @@ struct Coordinates {
   bool Contains(SBSNode::ValuePtr value) const { return node_->level_[height_]->Contains(value); }
   void SplitNext(const SBSOptions& options) { node_->SplitNext(options, height_); }
   void AbsorbNext(const SBSOptions& options) { node_->AbsorbNext(options, height_); }
+  void RefreshChildStatistics() { node_->RefreshChildStatistics(height_); }
   //bool operator ==(const Coordinates& b) { return node_ == b.node_; }
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
   void GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
@@ -135,7 +136,7 @@ struct SBSIterator {
       s_.Push(Coordinates(curr.node_, curr.height_ - i));
   }
   Coordinates Current() const { return s_.Top(); }
-  // ---------------------iterator operation---------------------
+  // ---------------------iterator operation end-----------------
  private:
   bool SeekNode(Coordinates target) {
     BRealBounded bound(target.node_->Guard(), target.node_->Guard());
@@ -170,6 +171,7 @@ struct SBSIterator {
   }
   bool SeekBoundedValue(SBSNode::ValuePtr value) {
     SeekToRoot();
+    if (s_.Top().Contains(value)) return 1;
     while (s_.Top().Fit(*value, false) && s_.Top().height_ > 0) {
       auto ed = s_.Top().NextNode().DownNode();
       bool dive = false;
@@ -221,12 +223,20 @@ struct SBSIterator {
  private:
   void CheckSplit(const SBSOptions& options) {
     auto iter = s_.NewIterator();
+    bool update = false;
     for (iter->SeekToLast(); iter->Valid() && iter->Current().TestState(options) > 0; iter->Prev()) {
       // Dirty node can not split.
       if (iter->Current().height_ > 0 && iter->Current().IsDirty()) 
         break;
-      iter->Current().SplitNext(options);
+      update = true;
+      do {
+        iter->Current().SplitNext(options);
+      } while (iter->Current().TestState(options) > 0);
     }
+    // --------
+    if (update)
+      for (; iter->Valid(); iter->Prev())
+        iter->Current().RefreshChildStatistics();
   }
  public:
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) {
@@ -249,7 +259,9 @@ struct SBSIterator {
   }
   void GetChildGuardInCurrent(BoundedValueContainer& results) {
     if (s_.Top().height_ == 0) return;
-    auto ed = s_.Top(); ed.JumpNext(); ed.JumpDown();
+    auto ed = s_.Top(); 
+    ed.JumpNext(); 
+    ed.JumpDown();
     for (auto i = Coordinates(s_.Top().node_, ed.height_); i.Valid() && !(i == ed); i.JumpNext()) {
       auto cp = i.node_->pacesetter_;
       if (cp != nullptr)
@@ -276,13 +288,21 @@ struct SBSIterator {
   bool Del_(const SBSOptions& options, SBSNode::ValuePtr value, std::stack<SBSNode::ValuePtr>& stack) {
     bool found = SeekBoundedValue(value);
     if (!found) return 0;
+    bool update = false;
     s_.Top().Del(value);
+    int state = s_.Top().TestState(options);
+    if (state > 0) {
+      // split delayed.
+      // leave absorb procedure.
+      if (!s_.Top().IsDirty())
+        CheckSplit(options);
+      return 1;
+    }
     while (s_.Size() > 1) {
       auto target = s_.Pop();
-      bool shrink = s_.Top().TestState(options) < 0;
       size_t height = target.height_;
       auto st = s_.Top().DownNode(), ed = s_.Top().NextNode().DownNode();
-      if (shrink) {
+      if (state < 0) {
         Coordinates prev = st;
         auto next = target.NextNode();
         if (!(target == st)) { 
@@ -298,10 +318,11 @@ struct SBSIterator {
         } else if (!(next == ed) && prev.node_->Width(height) > next.node_->Width(height)) { // prev.width > next.width
           ;
         } else {
-          assert(next == ed || prev.node_->Width(height) < next.node_->Width(height));
+          assert(next == ed || prev.node_->Width(height) <= next.node_->Width(height));
           target = prev;
         }
         target.AbsorbNext(options);
+        // Check split by absorb.
         if (target.TestState(options) > 0 && !target.IsDirty())
           target.SplitNext(options);
       }
@@ -314,7 +335,12 @@ struct SBSIterator {
           }
         }
       }
+      state = s_.Top().TestState(options);
     }
+    auto iter = s_.NewIterator();
+    for (iter->SeekToLast(); iter->Valid(); iter->Prev())
+      iter->Current().RefreshChildStatistics();
+    
     // Since the path node may have changed, we always assume that 
     // the path information is no longer accessible and 
     // therefore return to the root node.

@@ -69,6 +69,16 @@ struct SBSNode {
       width ++;
     return width;
   }
+  bool HasEmptyChild(size_t height) const {
+    if (height == 0) return 0;
+    SBSP ed = Next(height);
+    if (level_[height - 1]->buffer_.empty())
+      return 1;
+    for (SBSP next = Next(height - 1); next != ed; next = next->Next(height - 1)) 
+      if (next->level_[height - 1]->buffer_.empty())
+        return 1;
+    return 0;
+  }
   bool Overlap(size_t height, const Bounded& range) const {
     for (auto r : level_[height]->buffer_)
       if (r->Compare(range) == BOverlap) return true;
@@ -92,14 +102,20 @@ struct SBSNode {
     return 1;
   }
  private:
+  // return 1 if this node needs split.
+  // return -1 if this node needs to absorb or to be absorbed.
+  // return 0 if this node doesn't need change immediately.
   int TestState(const SBSOptions& options, size_t height) const { 
     if (height == 0) {
       if (level_[height]->buffer_.size() > 1) return 1;
-      if (!is_head_ && level_[height]->buffer_.size() == 0) return -1;
+      if (level_[height]->buffer_.size() == 0) {
+        if (is_head_)
+          return Next(0) && Next(0)->Height() == 1 ? -1 : 0;
+        return -1;
+      }
       return 0;
     }
-    else 
-      return options.TestState(Width(height), is_head_); 
+    return options.TestState(Width(height), is_head_); 
   }
   bool Fit(size_t height, const Bounded& range, bool no_overlap) const { 
     int cmp1 = range.Min().compare(Guard());
@@ -115,12 +131,22 @@ struct SBSNode {
     return 1;
   }
   void Add(const SBSOptions& options, size_t height, ValuePtr range) {
-    level_[height]->Add(range);
+    level_[height]->Add(range, is_head_);
+    {
+      level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::PutCount, 1);
+      if (height == 0)
+        level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::LeafCount, 1);           // Leaf Count & Put Count.
+    }
     if (pacesetter_ == nullptr || Guard().compare(range->Min()) > 0)
       pacesetter_ = range;
   }
   void Del(size_t height, ValuePtr range) {
-    level_[height]->Del(range);
+    level_[height]->Del(range, is_head_);
+    {
+      level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::DelCount, 1);
+      if (height == 0)
+        level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::LeafCount, -1);          // Leaf Count & Del Count.
+    }
     if (Guard().compare(range->Min()) == 0)
       Rebound();
   }
@@ -131,15 +157,29 @@ struct SBSNode {
     node->node_stats_->Inherit(stats, Guard());
   }
   void DecHeight() { level_.pop_back(); }
+  void RefreshChildStatistics(size_t height) {
+    if (height == 0) return;
+    SBSP ed = Next(height);
+    auto& stat = level_[height]->child_stats_;
+    stat = std::make_shared<Statistics>(*level_[height - 1]->node_stats_);
+    if (level_[height - 1]->child_stats_) 
+      stat->Superposition(*level_[height - 1]->child_stats_);
+    for (auto i = Next(height - 1); i != ed; i = i->Next(height - 1)) {
+      stat->Superposition(*i->level_[height - 1]->node_stats_);
+      if (i->level_[height - 1]->child_stats_)
+        stat->Superposition(*i->level_[height - 1]->child_stats_);
+    }
+    stat->ForceMerge();
+  }
   void SplitNext(const SBSOptions& options, size_t height) {
     if (height == 0) {
       auto &a = level_[0]->buffer_;
       assert(a.size() == 2);
       auto tmp = std::make_shared<SBSNode>(options_, Next(0));
       tmp->Add(options, 0, *a.rbegin());
-      tmp->level_[0]->node_stats_->Inherit(level_[0]->node_stats_, tmp->Guard());
       SetNext(0, tmp);
-      a.Del(**a.rbegin());
+      Del(0, *a.rbegin());
+      tmp->level_[0]->node_stats_->Inherit(level_[0]->node_stats_, tmp->Guard());
     } else {
       assert(!level_[height]->isDirty());
       size_t width = Width(height);
@@ -151,11 +191,14 @@ struct SBSNode {
       middle->IncHeight(level_[height]->node_stats_, next);
       //middle->level_[height]->node_stats_->Inherit(level_[0]->node_stats_, tmp->Guard());
       SetNext(height, middle);
+      RefreshChildStatistics(height);
+      middle->RefreshChildStatistics(height);
       // if this node is root node, increase height.
       if (is_head_ && height + 1 == Height()) {
         assert(false && "Error : try to increase tree height.");
         assert(next == nullptr);
         IncHeight(level_[height]->node_stats_, nullptr);
+        RefreshChildStatistics(height + 1);
       }
     }
   }
@@ -167,6 +210,7 @@ struct SBSNode {
     level_[height]->Absorb(next->level_[height]);
     Rebound();
     next->DecHeight();
+    RefreshChildStatistics(height);
   }
  public:
   enum PrintType { DataInfo, StatInfo };

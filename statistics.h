@@ -43,6 +43,9 @@ struct Counter {
  private:
   std::array<TypeData, DefaultCounterTypeMax> list_;
  public:
+  Counter() : list_() {}
+  Counter(const Counter& src) = default;
+
   TypeData operator[](TypeLabel k) const { return list_[k]; }
   virtual void Inc(TypeLabel label, int size) { list_[label] += size; }
   //virtual void Set(TypeLabel label, TypeData size) { list_[label] = size; }
@@ -98,7 +101,17 @@ struct HistoricalStatistics {
     history_(),
     recent_(std::make_shared<Counter>()),
     akasha_(std::make_shared<Counter>()) {}
-  HistoricalStatistics(const HistoricalStatistics& stats) = delete;
+  HistoricalStatistics(const HistoricalStatistics& src) 
+  : options_(src.options_),
+    history_(),
+    recent_(std::make_shared<Counter>(*src.recent_)),
+    akasha_(std::make_shared<Counter>(*src.akasha_)) {
+      for (auto h : src.history_) {
+        auto target = std::make_shared<Counter>(*h.second);
+        history_.emplace(h.first, target);
+      }
+    }
+
 
   CPTR at(StatisticsType type) {
     switch(type) {
@@ -153,14 +166,25 @@ struct Statistics {
   std::vector<RHSP> shards_;
   uint64_t last_seperated_time_;
   Statistics() = delete;
-  Statistics(const Statistics&) = delete;
+  Statistics(const Statistics& src)
+  : options_(src.options_),
+    shards_(),
+    last_seperated_time_(src.last_seperated_time_) {
+      for (RHSP s : src.shards_) 
+        shards_.emplace_back(std::make_shared<RangedHistoricalStatistics>(*s));
+    }
   Statistics(std::shared_ptr<StatisticsOptions> options)
   : options_(options), 
     shards_({std::make_shared<RangedHistoricalStatistics>("", options)}),
     last_seperated_time_(0) {}
   virtual void Inc(const Slice& key, uint32_t label, int size) { at(key)->Inc(label, size); }
   virtual void Set(const Slice& key, uint32_t label, uint64_t size) { at(key)->Inc(label, size); }
-  virtual uint64_t Get(StatisticsType type, Counter::TypeLabel label) const { return shards_[0]->Get(type, label); }
+  virtual Counter::TypeData Get(StatisticsType type, Counter::TypeLabel label) const { 
+    Counter::TypeData result = 0;
+    for (RHSP shard : shards_) 
+      result += shard->Get(type, label);
+    return result; 
+  }
   virtual void Scale(double k) { for (auto& rhsp : shards_) rhsp->Scale(k); }
   virtual void Superposition(const Statistics& bro) { 
     for (auto rhsp : bro.shards_) InsertRHSP(rhsp);
@@ -171,7 +195,6 @@ struct Statistics {
     for (size_t i = 0; i < src->shards_.size(); ++i) {
       auto shard = src->shards_[i];
       if (shard->Compare(guard) > 0) {
-        assert(i > 0);
         if (i > 1) i--;
         for (size_t j = i; j < src->shards_.size(); ++j)
           InsertRHSP(src->shards_[j]);
@@ -179,10 +202,20 @@ struct Statistics {
         break;
       }
     }
+    if (src->shards_.empty()) {
+      src->shards_.push_back(std::make_shared<RangedHistoricalStatistics>("", options_));
+    }
   }
   void GetStringLog(std::vector<std::string>& set) {
     for (RHSP bc : shards_)
       bc->GetStringLog(set);
+  }
+  void ForceMerge() {
+    RHSP base = shards_[0];
+    for (auto iter = shards_.begin()+1; iter != shards_.end(); iter++) {
+      base->Superposition(**iter);
+    }
+    shards_.resize(1);
   }
  private:
   RHSP at(const Slice& key) {
@@ -191,8 +224,8 @@ struct Statistics {
     for (auto iter = shards_.rbegin(); iter != shards_.rend(); ++iter) 
       if ((*iter)->Compare(key) <= 0)
          return *iter;
-    assert(false);
-    return nullptr;
+    return *shards_.begin();
+    //assert(false);return nullptr;
   }
   // When a node merges another node, ParaTable must give a merging scheme.
   void InsertRHSP(RHSP stats) {
@@ -209,11 +242,7 @@ struct Statistics {
     uint64_t now = options_->NowTimeSlice();
     if (now < last_seperated_time_ + options_->TimeBeforeMerge())
       return;
-    RHSP base = shards_[0];
-    for (auto iter = shards_.begin()+1; iter != shards_.end(); iter++) {
-      base->Superposition(**iter);
-    }
-    shards_.resize(1);
+    ForceMerge();
   }
 
 };
