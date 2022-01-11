@@ -9,40 +9,54 @@ struct Scorer;
 
 struct LeveledScorer : public Scorer {
  private:
-  struct GlobalStatus {
-    size_t head_height_;
-  } status_;
-  void Init(std::shared_ptr<SBSNode> head) {  status_.head_height_ = head->Height();  }
   size_t max_level0_size_ = 8;
   size_t max_tiered_runs_ = 1;
   size_t base_children_ = 10;
-
-  int level0_height_ = -1;
+  bool level0_found_ = 0;
+  const size_t allow_seek_ = (uint64_t)(2) * 1024 * 1024 / 16384U;
  public:
-  LeveledScorer(std::shared_ptr<SBSNode> head) { Init(head); }
-  virtual double CalculateByBufferSize(std::shared_ptr<SBSNode> node, size_t height, size_t buffer_size) {
-    Scorer::SetNode(node, height);
+  LeveledScorer() {}
+  using Scorer::Init;
+  using Scorer::Reset;
+  using Scorer::Update;
+  using Scorer::MaxScore;
+ private: // override this function.
+  virtual double Calculate() override { return CalculateByBufferSize(BufferSize()); }
+ private:
+  virtual double CalculateByBufferSize(size_t buffer_size) {
     double score = 0;
-    if (height == 0) return 0;
-    if (level0_height_ == -1 || height == level0_height_) {
-      if (buffer_size == 0) return 0;
-      level0_height_ = height;
-      score = 1.0 * buffer_size / max_level0_size_;
-    } else {
-      score = 1.0 * buffer_size / max_tiered_runs_; 
+    if (Height() == 0) return 0;
+    
+    double buffer_score = 0;
+    {
+      if (!level0_found_ && buffer_size > 0) {
+        level0_found_ = true;
+        buffer_score = 1.0 * buffer_size / (max_level0_size_ + 1);
+      } else {
+        buffer_score = 1.0 * buffer_size / (max_tiered_runs_ + 1); 
+      }
     }
+    double get_score = 0;
+    {
+      int64_t leaves = GetStatistics(TypeHistorical, LeafCount);
+      //int64_t global_leaves = Global().global_stats_->Get(TypeHistorical, LeafCount);
+      int64_t get = GetStatistics(TypeHistorical, GetCount);
+      //int64_t global_get = Global().global_stats_->Get(TypeHistorical, GetCount);
+      if (buffer_size >= 1 && get >= allow_seek_ * buffer_size) {
+        get_score = 1;
+      }
+    }
+
+    score = buffer_score + get_score;
+
     if (score > 1) score = 1;
     if (score < 0) score = 0;
 
     return score;
   }
-  virtual double Calculate(std::shared_ptr<SBSNode> node, size_t height) override {
-    Scorer::SetNode(node, height);
-    return CalculateByBufferSize(node, height, BufferSize());
-  }
   bool CalculateIfFull(std::shared_ptr<SBSNode> node, size_t height) {
     Scorer::SetNode(node, height);
-    return CalculateByBufferSize(node, height, BufferSize() + 1) == 1;
+    return CalculateByBufferSize(BufferSize() + 1) >= 1.0;
   }
 };
 
@@ -61,63 +75,63 @@ struct SBSkiplist {
     iter_(head_) {}
 
   void Put(TypeValuePtr value, bool buffered = false) {
-    auto iter = SBSIterator(head_);
+    iter_.SeekToRoot();
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    if (buffered) { iter.AddBuffered(*options_, target); return; }
-    iter.Add(*options_, target);
+    if (buffered) { iter_.AddBuffered(*options_, target); return; }
+    iter_.Add(*options_, target);
     //iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
   }
   void BufferClear() {
-    auto iter = SBSIterator(head_);
     BoundedValueContainer container;
-    iter.GetBuffered(container);
-    for (auto range : container) {
-      iter.Del(*options_, range);
-    }
-    for (auto range : container) {
-      iter.Add(*options_, range);
-    }
+    iter_.SeekToRoot();
+    for (auto range : container)
+      iter_.Del(*options_, range);
+    for (auto range : container)
+      iter_.Add(*options_, range);
   }
   bool Contains(TypeValuePtr value) {
-    auto iter = SBSIterator(head_);
+    iter_.SeekToRoot();
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    return iter.SeekBoundedValue(target);
+    return iter_.SeekBoundedValue(target);
   }
   int SeekHeight(const Bounded& range) {
-    auto iter = SBSIterator(head_);
-    iter.SeekRange(range, true);
-    return iter.Current().height_;
+    iter_.SeekToRoot();
+    iter_.SeekRange(range, true);
+    return iter_.Current().height_;
   }
-  void Get(const Bounded& range, BoundedValueContainer& container) {
-    auto iter = SBSIterator(head_);
-    iter.SeekRange(range);
+  void Get(const Bounded& range, BoundedValueContainer& container, std::shared_ptr<Scorer> scorer = nullptr) {
+    iter_.SeekToRoot();
+    iter_.SeekRange(range);
     //std::cout << iter.ToString() << std::endl;
     auto bound = std::make_shared<BRealBounded>(range.Min(), range.Max());
-    iter.GetBufferOnRoute(container, bound);
+    iter_.GetBufferOnRoute(container, bound, scorer);
   }
   bool Del(TypeValuePtr value) {
-    auto iter = SBSIterator(head_);
+    iter_.SeekToRoot();
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    iter.Del(*options_, target);
-    return 1;
+    return iter_.Del(*options_, target);
   }
-  double PickFilesByScore(std::shared_ptr<Scorer> scorer, int& height, 
-                        BoundedValueContainer* container = nullptr) {
-    auto iter = SBSIterator(head_);
-    double max_score = iter.SeekScore(scorer);
-    height = iter.Current().height_;
-
-    if (container != nullptr) {
-      iter.GetBufferInCurrent(container[0]);
+  void PickFilesByIterator(int& height, BoundedValueContainer* containers) {
+    height = iter_.Current().height_;
+    if (containers != nullptr) {
+      iter_.GetBufferInCurrent(containers[0]);
       assert(height > 0);
       if (height > 1)
-        iter.GetChildGuardInCurrent(container[2]);
-      for (iter.Dive(); 
-           iter.Valid() && iter.Current().node_->Guard().compare(container[0].Max()) <= 0; 
-           iter.Next()) {
-        iter.GetBufferInCurrent(container[1]);
+        iter_.GetChildGuardInCurrent(containers[2]);
+      for (iter_.Dive(); 
+           iter_.Valid() && iter_.Current().node_->Guard().compare(containers[0].Max()) <= 0; 
+           iter_.Next()) {
+        iter_.GetBufferInCurrent(containers[1]);
       } 
     }
+  }
+  double PickFilesByScore(std::shared_ptr<Scorer> scorer, int& height, 
+                        BoundedValueContainer* containers = nullptr) {
+    iter_.SeekToRoot();
+    double max_score = iter_.SeekScore(scorer);
+    height = iter_.Current().height_;
+    if (containers)
+      PickFilesByIterator(height, containers);
     return max_score;
   }
   std::string ToString() const {

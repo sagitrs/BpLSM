@@ -207,8 +207,10 @@ struct Statistics {
     }
   }
   void GetStringLog(std::vector<std::string>& set) {
-    for (RHSP bc : shards_)
+    for (RHSP bc : shards_) {
+      set.push_back(bc->guard_);
       bc->GetStringLog(set);
+    }
   }
   void ForceMerge() {
     RHSP base = shards_[0];

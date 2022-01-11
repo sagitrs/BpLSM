@@ -161,13 +161,17 @@ struct SBSNode {
     if (height == 0) return;
     SBSP ed = Next(height);
     auto& stat = level_[height]->child_stats_;
-    stat = std::make_shared<Statistics>(*level_[height - 1]->node_stats_);
-    if (level_[height - 1]->child_stats_) 
-      stat->Superposition(*level_[height - 1]->child_stats_);
+    stat = std::make_shared<Statistics>(options_);
+    
+    auto &nst = level_[height - 1]->node_stats_;
+    auto &cst = level_[height - 1]->child_stats_;
+    if (nst) stat->Superposition(*nst);
+    if (cst) stat->Superposition(*cst);
     for (auto i = Next(height - 1); i != ed; i = i->Next(height - 1)) {
-      stat->Superposition(*i->level_[height - 1]->node_stats_);
-      if (i->level_[height - 1]->child_stats_)
-        stat->Superposition(*i->level_[height - 1]->child_stats_);
+      auto &nst = i->level_[height - 1]->node_stats_;
+      auto &cst = i->level_[height - 1]->child_stats_;
+      if (nst) stat->Superposition(*nst);
+      if (cst) stat->Superposition(*cst);
     }
     stat->ForceMerge();
   }

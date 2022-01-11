@@ -16,6 +16,8 @@ struct SBSNodeOptions {
   // The default width of the current node after splitting.
   virtual size_t DefaultWidth() const = 0;
 
+  virtual double NeedsCompactionScore() const = 0;
+
   // Used to detect if a width is below or above the boundary value.
   // Exceptionally, the left border of the head node is not checked.
   int TestState(size_t size, bool lbound_ignore) const {
@@ -79,21 +81,16 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   double B = 0.1, I = 0.9, D = 0.0;
   static leveldb::Env* TimerEnv() { return leveldb::Env::Default(); }
  public:
-  uint64_t TimeSliceMicroSecond() const override { return time_slice_; }
-  uint64_t TimeSliceMaximumSize() const override { return time_count_; }
-  virtual uint64_t TimeBeforeMerge() const override { return time_slice_before_merge_ * time_slice_; }
-  uint64_t NowTimeSlice() const override { return TimerEnv()->NowMicros() / time_slice_; }
-  double kBaseWeight() const override { return B; }
-  double kIntegrationWeight() const override { return I; }
-  double kDifferentiationWeight() const override { return D; }
+  virtual uint64_t TimeSliceMicroSecond() const override { return time_slice_; }
+  virtual uint64_t TimeSliceMaximumSize() const override { return time_count_; }
+  virtual uint64_t TimeBeforeMerge() const override { return time_slice_ / 6; }
+  virtual uint64_t NowTimeSlice() const override { return TimerEnv()->NowMicros() / time_slice_; }
+  virtual double kBaseWeight() const override { return B; }
+  virtual double kIntegrationWeight() const override { return I; }
+  virtual double kDifferentiationWeight() const override { return D; }
 
-// User-defined parameters:
- private:
-  size_t level0_buffer_size_ = 8;
-  size_t global_buffer_size_ = 1;
- public:
-  size_t RootBufferLimit() { return level0_buffer_size_; }
-  size_t GlobalBufferLimit() { return global_buffer_size_; }
+  double needs_compaction_score_ = 0.8;
+  virtual double NeedsCompactionScore() const override { return needs_compaction_score_; }
 
  public:
   SBSOptions() = default;

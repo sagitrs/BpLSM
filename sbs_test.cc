@@ -35,17 +35,15 @@ TEST(SBSTest, Simple) {
     list.Put(TempKV::FactoryBuild(i*10+0, i*10+0));
     //std::cout << list.ToString() << std::endl;
     list.Put(TempKV::FactoryBuild(i*10+9, i*10+9));
-    std::cout << list.ToString() << std::endl;
+    //std::cout << list.ToString() << std::endl;
   }
-  std::cout << list.ToString() << std::endl;
-  return;
+  //std::cout << list.ToString() << std::endl;
   for (size_t i = 1; i <= 9; ++i) {
     list.Put(TempKV::FactoryBuild(i*10+0, i*10+9));
     //std::cout << list.ToString() << std::endl;
   }
   
-  std::cout << list.ToString() << std::endl;
-  
+  //std::cout << list.ToString() << std::endl;
   Slice target_key("70");
   TempKV kv(target_key, target_key, 12345678);
   sagitrs::BoundedValueContainer container[3];
@@ -54,7 +52,7 @@ TEST(SBSTest, Simple) {
   ASSERT_EQ(container[0].size(), 2);
   //---------------------------------------
   container[0].clear();
-  auto scorer = std::make_shared<sagitrs::LeveledScorer>(list.GetHead());
+  auto scorer = std::make_shared<sagitrs::LeveledScorer>();
   int height = -1;
   list.PickFilesByScore(scorer, height, &container[0]);
   std::cout << "PickCompaction=[" << container[0].ToString() << "||" << container[1].ToString() << "]" << std::endl;
@@ -64,16 +62,17 @@ TEST(SBSTest, Simple) {
     list.Put(TempKV::FactoryBuild(70+i, 70+i));
     //std::cout << list.ToString() << std::endl;
   }
-  std::cout << list.ToString() << std::endl;
-  list.Del(TempKV::FactoryBuild(70, 79));
+  //std::cout << list.ToString() << std::endl;
+  //return;
+  list.Del(TempKV::FactoryBuild(50, 59));
   //std::cout << list.ToString() << std::endl;
   list.Del(TempKV::FactoryBuild(60, 69));
-  std::cout << list.ToString() << std::endl;
+  //std::cout << list.ToString() << std::endl;
   //---------------------------------------
   list.Del(TempKV::FactoryBuild(29, 29));
-  std::cout << list.ToString() << std::endl;
+  //std::cout << list.ToString() << std::endl;
   list.Del(TempKV::FactoryBuild(20, 20));
-  std::cout << list.ToString() << std::endl;
+  //std::cout << list.ToString() << std::endl;
 }
 
 }  // namespace leveldb

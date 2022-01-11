@@ -37,7 +37,10 @@ struct Coordinates {
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
       if (key == nullptr || (*i)->Compare(*key) == BOverlap) {
         results.Add(*i);
-        Slice guard = (*i)->Min();
+        if (key != nullptr) {
+          Slice guard = (*i)->Min();
+          statistics->Inc(guard, DefaultCounterType::GetCount, 1);
+        }
       }
     }
   }
@@ -202,23 +205,18 @@ struct SBSIterator {
   // This may recursively trigger a split operation.
   // Assert: Already SeekRange().
   double SeekScore(std::shared_ptr<Scorer> scorer) {
-    SeekToRoot();
+    scorer->Init(head_);
+    scorer->Reset();
     CoordinatesStack max_stack(s_);
-    double max_score = scorer->Calculate(s_.Bottom().node_, s_.Bottom().height_);
+    
     for (int height = SBSHeight() - 1; height > 0; --height) {
       SeekToRoot();
-      for (Dive(SBSHeight() - 1 - height); Valid(); Next()) {
-        double s = scorer->Calculate(s_.Top().node_, height);
-        if (s > max_score) {
-          max_score = s;
+      for (Dive(SBSHeight() - 1 - height); Valid(); Next()) 
+        if (scorer->Update(s_.Top().node_, s_.Top().height_)) 
           max_stack = s_;
-          if (s == 1) break;
-        }
-      }
-      if (max_score == 1) break;
     }
     s_ = max_stack;
-    return max_score;
+    return scorer->MaxScore();
   }
  private:
   void CheckSplit(const SBSOptions& options) {
@@ -236,7 +234,7 @@ struct SBSIterator {
     // --------
     if (update)
       for (; iter->Valid(); iter->Prev())
-        iter->Current().RefreshChildStatistics();
+        iter->Current().RefreshChildStatistics();                                                         //  recalculate states in spliting.
   }
  public:
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) {
@@ -249,10 +247,24 @@ struct SBSIterator {
  private:
  public:
   // Get all the values on the path that are overlap with the given range.
-  void GetBufferOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) {
+  void GetBufferOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range, std::shared_ptr<Scorer> scorer = nullptr) {
+    CoordinatesStack stack;
+    if (scorer) {
+      scorer->Init(head_);
+      scorer->Reset();
+    }
     auto iter = s_.NewIterator();
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next())
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       iter->Current().GetRanges(results, range);
+      iter->Current().RefreshChildStatistics();
+      if (scorer && scorer->Update(iter->Current().node_, iter->Current().height_)) {
+        stack = s_;
+        stack.SetToIterator(*iter);
+      }
+    }
+    if (scorer && scorer->MaxScore() > 0) {
+      s_ = stack;
+    }
   }
   void GetBufferInCurrent(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) {
     s_.Top().GetRanges(results, range);
@@ -272,39 +284,51 @@ struct SBSIterator {
   // Delete a value within the current node which is the same as the given value.
   // This may recursively trigger a merge operation and possibly a split operation.
   bool Del(const SBSOptions& options, SBSNode::ValuePtr range) {
-    std::stack<SBSNode::ValuePtr> s;
-    bool ok = Del_(options, range, s);
+    std::deque<SBSNode::ValuePtr> reinsert_list;
+    bool ok = Del_(options, range, reinsert_list);
     if (!ok) return 0;
     //s.push(range);
-    while (!s.empty()) {
-      auto e = s.top();
-      s.pop();
-      bool ok = Del_(options, e, s);
+    while (!reinsert_list.empty()) {
+      auto e = reinsert_list.front();
+      reinsert_list.pop_front();
+      bool ok = Del_(options, e, reinsert_list);
       assert(ok);
       Add(options, e);
     }
     return 1;
   }
-  bool Del_(const SBSOptions& options, SBSNode::ValuePtr value, std::stack<SBSNode::ValuePtr>& stack) {
+  bool Del_(const SBSOptions& options, SBSNode::ValuePtr value, std::deque<SBSNode::ValuePtr>& reinsert) {
+    // 1. Delete file in target node.
+    // 2. (for inner node) check if split happens. if so, stop here.
+    // 3. (for leaf node) check if node became empty. if so, check absorb recursively.
+    //   1. return to parent node, absorb child node.
+    //   2. check if files in buffer could move down, record in reinsert.
+    //   3. recalculate node status.
+    //   4. check if child node is less enough to check absorb recursively.
+    // 4. recalculate all nodes' child-state.
     bool found = SeekBoundedValue(value);
     if (!found) return 0;
-    bool update = false;
-    s_.Top().Del(value);
-    int state = s_.Top().TestState(options);
-    if (state > 0) {
-      // split delayed.
-      // leave absorb procedure.
-      if (!s_.Top().IsDirty())
-        CheckSplit(options);
+    auto target = s_.Top();
+    target.Del(value);
+
+    // for inner node:
+    // check if recursively split is triggered.
+    size_t height = target.height_;
+    int state = target.TestState(options);
+    if (height > 0 && state > 0 && !target.IsDirty()) {
+      CheckSplit(options);
       return 1;
     }
-    while (s_.Size() > 1) {
-      auto target = s_.Pop();
+
+    // for leaf node:
+    // check if recursively absorb is triggered.
+    for (target = s_.Pop(); s_.Size() > 1; target = s_.Pop()) {
       size_t height = target.height_;
       auto st = s_.Top().DownNode(), ed = s_.Top().NextNode().DownNode();
-      if (state < 0) {
-        Coordinates prev = st;
-        auto next = target.NextNode();
+
+      if ( target.TestState(options) < 0) {
+        // begin absorbing.
+        Coordinates prev = st, next = target.NextNode();
         if (!(target == st)) { 
           for (Coordinates i = st; i.Valid() && !(i == ed); i.JumpNext())
             if (i.NextNode() == target) {
@@ -312,7 +336,7 @@ struct SBSIterator {
               break;
             }
         }
-        // init finished.
+        // prev & next is calculated.
         if (target == st) { // no prev node.
           assert(!(next == ed));
         } else if (!(next == ed) && prev.node_->Width(height) > next.node_->Width(height)) { // prev.width > next.width
@@ -321,29 +345,22 @@ struct SBSIterator {
           assert(next == ed || prev.node_->Width(height) <= next.node_->Width(height));
           target = prev;
         }
+        // now we need target node to absorb the next node.
         target.AbsorbNext(options);
-        // Check split by absorb.
-        if (target.TestState(options) > 0 && !target.IsDirty())
-          target.SplitNext(options);
       }
-      // deletion finished. Check file bound.
+
+      // Check file bound since guard in this tree has changed.
       for (auto element : s_.Top().Buffer()) {
         for (auto i = st; i.Valid() && !(i == ed); i.JumpNext()) {
           if (i.Fit(*element, height == 0)) {
-            stack.push(element);
+            reinsert.push_back(element);
             break;
           }
         }
       }
-      state = s_.Top().TestState(options);
+      // Refresh child statistics.
+      s_.Top().RefreshChildStatistics();                                                              // refresh stats during deletion.
     }
-    auto iter = s_.NewIterator();
-    for (iter->SeekToLast(); iter->Valid(); iter->Prev())
-      iter->Current().RefreshChildStatistics();
-    
-    // Since the path node may have changed, we always assume that 
-    // the path information is no longer accessible and 
-    // therefore return to the root node.
     SeekToRoot();
     return 1;
   }
