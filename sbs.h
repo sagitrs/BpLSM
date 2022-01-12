@@ -20,6 +20,7 @@ struct LeveledScorer : public Scorer {
   using Scorer::Reset;
   using Scorer::Update;
   using Scorer::MaxScore;
+  using Scorer::GetScore;
  private: // override this function.
   virtual double Calculate() override { return CalculateByBufferSize(BufferSize()); }
  private:
@@ -49,7 +50,7 @@ struct LeveledScorer : public Scorer {
 
     score = buffer_score + get_score;
 
-    if (score > 1) score = 1;
+    //if (score > 1) score = 1;
     if (score < 0) score = 0;
 
     return score;
@@ -84,10 +85,17 @@ struct SBSkiplist {
   void BufferClear() {
     BoundedValueContainer container;
     iter_.SeekToRoot();
+    iter_.GetBuffered(container);
     for (auto range : container)
       iter_.Del(*options_, range);
     for (auto range : container)
       iter_.Add(*options_, range);
+  }
+  size_t BufferSize() { 
+    BoundedValueContainer container;
+    iter_.SeekToRoot();
+    iter_.GetBuffered(container);
+    return container.size();
   }
   bool Contains(TypeValuePtr value) {
     iter_.SeekToRoot();
@@ -113,26 +121,35 @@ struct SBSkiplist {
   }
   void PickFilesByIterator(int& height, BoundedValueContainer* containers) {
     height = iter_.Current().height_;
-    if (containers != nullptr) {
-      iter_.GetBufferInCurrent(containers[0]);
-      assert(height > 0);
-      if (height > 1)
-        iter_.GetChildGuardInCurrent(containers[2]);
-      for (iter_.Dive(); 
-           iter_.Valid() && iter_.Current().node_->Guard().compare(containers[0].Max()) <= 0; 
-           iter_.Next()) {
-        iter_.GetBufferInCurrent(containers[1]);
-      } 
-    }
+    if (containers == nullptr)
+      return;
+
+    // get file in current.
+    iter_.GetBufferInCurrent(containers[0]);
+    if (height > 1)
+      iter_.GetChildGuardInCurrent(containers[2]);
+    
+    for (iter_.Dive(); 
+         iter_.Valid() && iter_.Current().node_->Guard().compare(containers[0].Max()) <= 0; 
+         iter_.Next()) {
+      iter_.GetBufferInCurrent(containers[1]);
+    } 
+    
+    
   }
-  double PickFilesByScore(std::shared_ptr<Scorer> scorer, int& height, 
-                        BoundedValueContainer* containers = nullptr) {
+  double PickFilesByScore(std::shared_ptr<Scorer> scorer, double baseline,
+                          int& height, BoundedValueContainer* containers = nullptr) {
     iter_.SeekToRoot();
-    double max_score = iter_.SeekScore(scorer);
+    double max_score = iter_.SeekScore(scorer, baseline, true);
     height = iter_.Current().height_;
     if (containers)
       PickFilesByIterator(height, containers);
     return max_score;
+  }
+  bool HasScore(std::shared_ptr<Scorer> scorer, double baseline) {
+    iter_.SeekToRoot();
+    iter_.SeekScore(scorer, baseline, false);
+    return scorer->isUpdated();
   }
   std::string ToString() const {
     std::stringstream ss;

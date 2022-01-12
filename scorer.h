@@ -22,24 +22,39 @@ struct Scorer {
     }
   };
   std::shared_ptr<GlobalStatus> status_;
+  bool is_updated_;
+  double max_score_;
+
   std::shared_ptr<SBSNode> node_;
   size_t height_;
-  double max_score_;
  public:
-  Scorer() : status_(nullptr), node_(nullptr), height_(0), max_score_(0) {}
-  virtual void Init(std::shared_ptr<SBSNode> head) { status_ = std::make_shared<GlobalStatus>(head); }
-  virtual void Reset() { max_score_ = 0; }
+  Scorer() 
+  : status_(nullptr), is_updated_(false), max_score_(0), 
+    node_(nullptr), height_(0) {}
+  virtual void Init(std::shared_ptr<SBSNode> head) { 
+    status_ = std::make_shared<GlobalStatus>(head); 
+  }
+  virtual void Reset(double baseline) { 
+    is_updated_ = 0;
+    max_score_ = baseline;
+  }
   virtual double MaxScore() const { return max_score_; }
   virtual bool Update(std::shared_ptr<SBSNode> node, size_t height) {
-    if (max_score_ == 1) return 0;
+    //if (max_score_ == 1) return 0;
     SetNode(node, height);
-    double score = Calculate();
+    double score = GetScore(node, height);
     if (score > max_score_) {
       max_score_ = score;
+      is_updated_ = 1;
       return 1;
     }
     return 0;
   }
+  double GetScore(std::shared_ptr<SBSNode> node, size_t height) {
+    SetNode(node, height);
+    return Calculate();
+  }
+  bool isUpdated() const { return is_updated_; }
  protected:
   void SetNode(std::shared_ptr<SBSNode> node, size_t height) { node_ = node; height_ = height; }
   virtual double Calculate() = 0;

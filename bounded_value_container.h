@@ -19,7 +19,7 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
     BoundedValueContainerBaseType(container),
     BRealBounded("Undefined", "Undefined") { Rebound(); }
 
-  int Compare(const std::shared_ptr<BoundedValue> &a, const std::shared_ptr<BoundedValue> &b) const {
+  static int StaticCompare(const std::shared_ptr<BoundedValue> &a, const std::shared_ptr<BoundedValue> &b) {
     int cmp = a->Min().compare(b->Min());
     if (cmp == 0) cmp = a->Max().compare(b->Max());
     return cmp;
@@ -32,12 +32,12 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
 
     if (empty()) 
       push_back(value);
-    else if (Compare(value, *begin()) <= 0)
+    else if (StaticCompare(value, *begin()) <= 0)
       insert(begin(), value);
     else {
       auto prev = begin();
       for (auto i = prev+1; i != end(); ++i)
-        if (Compare(*prev, value) <= 0 && Compare(value, *i) <= 0) {
+        if (StaticCompare(*prev, value) <= 0 && StaticCompare(value, *i) <= 0) {
           insert(i, value);
           return;
         } else {

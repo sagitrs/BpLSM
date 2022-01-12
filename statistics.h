@@ -28,6 +28,9 @@ enum StatisticsType {
   TypeLatest,           // in a time slice.
   TypeRecent,           // in several time slices.
   TypeHistorical,       // all.
+
+  TypeNode,             // stat of this node.
+  TypeChild             // stat of all child.
 };
 
 struct AbstractStatistics {
@@ -177,6 +180,7 @@ struct Statistics {
   : options_(options), 
     shards_({std::make_shared<RangedHistoricalStatistics>("", options)}),
     last_seperated_time_(0) {}
+  virtual void Inc(uint32_t label, int size) { shards_[0]->Inc(label, size); }
   virtual void Inc(const Slice& key, uint32_t label, int size) { at(key)->Inc(label, size); }
   virtual void Set(const Slice& key, uint32_t label, uint64_t size) { at(key)->Inc(label, size); }
   virtual Counter::TypeData Get(StatisticsType type, Counter::TypeLabel label) const { 

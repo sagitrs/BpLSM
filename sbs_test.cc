@@ -54,7 +54,7 @@ TEST(SBSTest, Simple) {
   container[0].clear();
   auto scorer = std::make_shared<sagitrs::LeveledScorer>();
   int height = -1;
-  list.PickFilesByScore(scorer, height, &container[0]);
+  list.PickFilesByScore(scorer, 0, height, &container[0]);
   std::cout << "PickCompaction=[" << container[0].ToString() << "||" << container[1].ToString() << "]" << std::endl;
   //---------------------------------------
   for (size_t i = 1; i <= 8; ++i) {
@@ -73,6 +73,15 @@ TEST(SBSTest, Simple) {
   //std::cout << list.ToString() << std::endl;
   list.Del(TempKV::FactoryBuild(20, 20));
   //std::cout << list.ToString() << std::endl;
+
+
+  for (size_t i = 0; i < 10000; ++i) {
+    uint64_t k = random() % 100;
+    sagitrs::BoundedValueContainer container;
+    auto key = TempKV::FactoryBuild(k,k);
+    list.Get(*key, container, scorer);
+  }
+  std::cout << list.ToString() << std::endl;
 }
 
 }  // namespace leveldb

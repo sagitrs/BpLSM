@@ -29,20 +29,41 @@ struct Coordinates {
   void SplitNext(const SBSOptions& options) { node_->SplitNext(options, height_); }
   void AbsorbNext(const SBSOptions& options) { node_->AbsorbNext(options, height_); }
   void RefreshChildStatistics() { node_->RefreshChildStatistics(height_); }
+  void GetBufferWithChildGuard(BoundedValueContainer* results, BoundedValueContainer* guards) {
+    if (results)
+      GetRanges(*results, nullptr); 
+    if (height_ == 0) return;
+    if (guards)
+      node_->GetChildGuard(height_, guards);
+  }
+  std::shared_ptr<Statistics> Statistics(StatisticsType type) {
+    switch(type) {
+    case StatisticsType::TypeNode:
+      return node_->level_[height_]->node_stats_;
+    case StatisticsType::TypeChild:
+      return node_->level_[height_]->child_stats_;
+    default:
+      assert(false);
+      return nullptr;
+    }
+  }
   //bool operator ==(const Coordinates& b) { return node_ == b.node_; }
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
-  void GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
+  size_t GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
     auto& buffer = node_->level_[height_]->buffer_;
     auto& statistics = node_->level_[height_]->node_stats_;
+    size_t count = 0;
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
       if (key == nullptr || (*i)->Compare(*key) == BOverlap) {
         results.Add(*i);
         if (key != nullptr) {
           Slice guard = (*i)->Min();
           statistics->Inc(guard, DefaultCounterType::GetCount, 1);
+          ++count;
         }
       }
     }
+    return count;
   }
   BoundedValueContainer& Buffer() { return node_->level_[height_]->buffer_; }
 
@@ -111,7 +132,7 @@ struct SBSIterator {
   CoordinatesStack s_;
   SBSNode::SBSP head_;
   //-------------------------------------------------------------
-  size_t SBSHeight() const { assert(Valid()); return head_->Height(); }
+  size_t SBSHeight() const { return head_->Height(); }
   //----------------------iterator operation---------------------
  public:
   bool Valid() const { return s_.Top().Valid(); }
@@ -204,16 +225,20 @@ struct SBSIterator {
   // Add a value to the current node.
   // This may recursively trigger a split operation.
   // Assert: Already SeekRange().
-  double SeekScore(std::shared_ptr<Scorer> scorer) {
+  double SeekScore(std::shared_ptr<Scorer> scorer, double baseline, bool optimal) {
     scorer->Init(head_);
-    scorer->Reset();
+    scorer->Reset(baseline);
     CoordinatesStack max_stack(s_);
     
+    //for (int height = 1; height < SBSHeight(); ++height) {
     for (int height = SBSHeight() - 1; height > 0; --height) {
       SeekToRoot();
       for (Dive(SBSHeight() - 1 - height); Valid(); Next()) 
-        if (scorer->Update(s_.Top().node_, s_.Top().height_)) 
+        if (scorer->Update(s_.Top().node_, s_.Top().height_)) { 
           max_stack = s_;
+          if (!optimal)
+            return scorer->MaxScore();
+        }
     }
     s_ = max_stack;
     return scorer->MaxScore();
@@ -251,24 +276,27 @@ struct SBSIterator {
     CoordinatesStack stack;
     if (scorer) {
       scorer->Init(head_);
-      scorer->Reset();
+      scorer->Reset(head_->options_->NeedsCompactionScore());
     }
     auto iter = s_.NewIterator();
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-      iter->Current().GetRanges(results, range);
-      iter->Current().RefreshChildStatistics();
+    size_t counter = 0;
+    for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+      auto stats = iter->Current().Statistics(TypeChild);
+      if (stats)
+        stats->Inc(DefaultCounterType::GetCount, counter);
+      counter += iter->Current().GetRanges(results, range);
+      //iter->Current().RefreshChildStatistics();
       if (scorer && scorer->Update(iter->Current().node_, iter->Current().height_)) {
         stack = s_;
         stack.SetToIterator(*iter);
       }
     }
-    if (scorer && scorer->MaxScore() > 0) {
+    if (scorer && scorer->isUpdated()) {
       s_ = stack;
     }
   }
-  void GetBufferInCurrent(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) {
-    s_.Top().GetRanges(results, range);
-  }
+  void GetBufferInCurrent(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) { s_.Top().GetRanges(results, range); }
+
   void GetChildGuardInCurrent(BoundedValueContainer& results) {
     if (s_.Top().height_ == 0) return;
     auto ed = s_.Top(); 
@@ -280,6 +308,11 @@ struct SBSIterator {
         results.push_back(cp);
     }
   }
+  void GetBufferWithChildGuard(Coordinates target, BoundedValueContainer* results) const {
+    Coordinates target = s_.Top();
+    target.GetBufferWithChildGuard(&results[0], &results[1]);
+  }
+  double GetScore(std::shared_ptr<Scorer> scorer) const { return scorer->GetScore(s_.Top().node_, s_.Top().height_); }
   // Assume: The current node contains the target value.
   // Delete a value within the current node which is the same as the given value.
   // This may recursively trigger a merge operation and possibly a split operation.

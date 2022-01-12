@@ -69,6 +69,14 @@ struct SBSNode {
       width ++;
     return width;
   }
+  void GetChildGuard(size_t height, BoundedValueContainer* container) const {
+    if (height == 0 || container == nullptr) return;
+    SBSP ed = Next(height);
+    if (pacesetter_) container->push_back(pacesetter_);
+    for (SBSP next = Next(height - 1); next != ed; next = next->Next(height - 1)) 
+      if (next->pacesetter_)
+        container->push_back(next->pacesetter_);
+  }
   bool HasEmptyChild(size_t height) const {
     if (height == 0) return 0;
     SBSP ed = Next(height);
