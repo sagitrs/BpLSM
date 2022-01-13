@@ -138,10 +138,12 @@ struct SBSNode {
     }
     return 1;
   }
-  void Add(const SBSOptions& options, size_t height, ValuePtr range) {
+  void Add(const SBSOptions& options, size_t height, ValuePtr range, std::shared_ptr<Statistics> stats) {
     level_[height]->Add(range, is_head_);
+    if (stats)
+      level_[height]->node_stats_->Superposition(*stats);
     {
-      level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::PutCount, 1);
+      //level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::PutCount, 1);
       if (height == 0)
         level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::LeafCount, 1);           // Leaf Count & Put Count.
     }
@@ -151,18 +153,12 @@ struct SBSNode {
   void Del(size_t height, ValuePtr range) {
     level_[height]->Del(range, is_head_);
     {
-      level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::DelCount, 1);
+      //level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::DelCount, 1);
       if (height == 0)
         level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::LeafCount, -1);          // Leaf Count & Del Count.
     }
     if (Guard().compare(range->Min()) == 0)
       Rebound();
-  }
-  void IncHeight(std::shared_ptr<Statistics> stats, SBSP next) { 
-    auto tmp = std::make_shared<LevelNode>(stats->options_, next);
-    level_.push_back(tmp); 
-    auto &node = *level_.rbegin();
-    node->node_stats_->Inherit(stats, Guard());
   }
   void DecHeight() { level_.pop_back(); }
   void RefreshChildStatistics(size_t height) {
@@ -183,15 +179,18 @@ struct SBSNode {
     }
     stat->ForceMerge();
   }
+ private:
+ public:
   void SplitNext(const SBSOptions& options, size_t height) {
     if (height == 0) {
       auto &a = level_[0]->buffer_;
       assert(a.size() == 2);
       auto tmp = std::make_shared<SBSNode>(options_, Next(0));
-      tmp->Add(options, 0, *a.rbegin());
+      tmp->Add(options, 0, *a.rbegin(), nullptr);
       SetNext(0, tmp);
       Del(0, *a.rbegin());
-      tmp->level_[0]->node_stats_->Inherit(level_[0]->node_stats_, tmp->Guard());
+      level_[0]->node_stats_->MoveTo(tmp->level_[0]->node_stats_, 0.5);
+      //tmp->level_[0]->node_stats_->Inherit(level_[0]->node_stats_, tmp->Guard());
     } else {
       assert(!level_[height]->isDirty());
       size_t width = Width(height);
@@ -200,16 +199,21 @@ struct SBSNode {
       assert(reserve > 1);
       SBSP next = Next(height);
       SBSP middle = Next(height - 1, reserve);
-      middle->IncHeight(level_[height]->node_stats_, next);
+      {
+        auto tmp = std::make_shared<LevelNode>(options_, next);
+        level_[height]->node_stats_->MoveTo(tmp->node_stats_, 1.0 * reserve / width);
+        middle->level_.push_back(tmp); 
+        SetNext(height, middle);
+        RefreshChildStatistics(height);
+        middle->RefreshChildStatistics(height);
+      }
       //middle->level_[height]->node_stats_->Inherit(level_[0]->node_stats_, tmp->Guard());
-      SetNext(height, middle);
-      RefreshChildStatistics(height);
-      middle->RefreshChildStatistics(height);
       // if this node is root node, increase height.
       if (is_head_ && height + 1 == Height()) {
         assert(false && "Error : try to increase tree height.");
         assert(next == nullptr);
-        IncHeight(level_[height]->node_stats_, nullptr);
+        //IncHeight(level_[height]->node_stats_, nullptr);
+        // Todo : inherit problem to be solved.
         RefreshChildStatistics(height + 1);
       }
     }
@@ -225,47 +229,6 @@ struct SBSNode {
     RefreshChildStatistics(height);
   }
  public:
-  enum PrintType { DataInfo, StatInfo };
-  std::string ToString(PrintType type) const {
-    std::stringstream ss;
-    size_t width = 10;
-    size_t std_total_width = 42;
-    if (type == DataInfo) {
-      TypeBuffer::const_iterator iters[Height()], iters_end[Height()];
-      for (size_t i = 0; i < Height(); ++i) {
-        iters[i] = level_[i]->buffer_.begin();
-        iters_end[i] = level_[i]->buffer_.end();
-      }
-      for (size_t k = 0;; k++) {
-        std::vector<std::string> line;
-        bool line_null = true;
-        for (size_t h = 0; h < level_.size(); ++h) {
-          if (iters[h] != iters_end[h]) {
-            line.push_back((*iters[h])->ToString());
-            iters[h]++;
-            line_null = false;
-          }
-          else
-            line.push_back(""); 
-        }
-        if (line_null) 
-          break;
-        for (size_t i = 0; i < line.size(); ++i) {
-          std::string suffix(line[i].size() > width ? 0 : width - line[i].size(), ' ');
-          ss << line[i] << suffix << "|";
-        }
-        ss << std::endl;
-      }
-    } else if (type == StatInfo) {
-      for (size_t i = 0; i < Height(); ++i) {
-        std::string data = std::to_string(level_[i]->node_stats_->Get(TypeHistorical, DefaultCounterType::PutCount));
-        std::string suffix(data.size() > width ? 0 : width - data.size(), ' ');
-        ss << data << suffix;
-      }
-      ss << std::endl;
-    }
-    return ss.str();
-  }
   std::string ToString() const {
     std::stringstream ss;
     size_t width = 16;

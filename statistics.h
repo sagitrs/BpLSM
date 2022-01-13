@@ -13,12 +13,6 @@ enum DefaultCounterType : uint32_t {
   LeafCount = 0,
     // Construct: Set to 1 for leaf node, 0 for non-leaf node.
     // Update: Never change.
-  PutCount,
-    // Construct: Set to 0 for all node.
-    // Update: increase when buffer element is increased.
-  DelCount,
-    // Construct: Set to 0 for all node.
-    // Update: increase when buffer element is decreased.
   GetCount,
     // Construct: Set to 0 for all nodee.
     // Update: increase when buffer element is read.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
@@ -26,11 +20,14 @@ enum DefaultCounterType : uint32_t {
 };
 enum StatisticsType { 
   TypeLatest,           // in a time slice.
+  TypeSpecified,        // in a given time slice.
   TypeRecent,           // in several time slices.
   TypeHistorical,       // all.
 
   TypeNode,             // stat of this node.
-  TypeChild             // stat of all child.
+  TypeChild,            // stat of all child.
+  TypeMerged,           // stat of whole routes.
+  TypeDecayingMerged,   // stat of whole routes with decay.
 };
 
 struct AbstractStatistics {
@@ -54,12 +51,14 @@ struct Counter {
   //virtual void Set(TypeLabel label, TypeData size) { list_[label] = size; }
   virtual void Scale(double k) { for (auto& element : list_) element *= k;  }
   virtual void Superposition(const Counter& target, bool decrease = false) {
-    for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
+    for (size_t i = 0; i < DefaultCounterTypeMax; ++i) {
       list_[i] += target[i] * (decrease ? -1 : 1);
+#if defined(WITH_BVERSION_DEBUG)
+      assert(list_[i] < 10000000);
+#endif
+    }
   }
   void GetStringLog(std::vector<std::string>& set) {
-    set.push_back("PUT=" + std::to_string(list_[PutCount]));
-    set.push_back("DEL=" + std::to_string(list_[DelCount]));
     set.push_back("GET=" + std::to_string(list_[GetCount]));
     set.push_back("LEAF=" + std::to_string(list_[LeafCount]));
   }
@@ -72,18 +71,20 @@ struct HistoricalStatistics {
  private:
   std::map<TypeTime, CPTR> history_;
   CPTR recent_, akasha_;
-  uint64_t Now() { return options_->NowTimeSlice(); }
-  uint64_t LatestTimeSlice() const { return history_.rbegin()->first; }
-  uint64_t OldestTimeSlice() const { return history_.begin()->first; }
-  CPTR Current() {
-    TypeTime now = Now();
-    if (history_.empty() || now > LatestTimeSlice()) {
+  TypeTime Now() { return options_->NowTimeSlice(); }
+  TypeTime LatestTimeSlice() const { return history_.rbegin()->first; }
+  TypeTime OldestTimeSlice() const { return history_.begin()->first; }
+  CPTR Specified(size_t time) {
+    //TypeTime time = Now() - 1;
+    if (history_.find(time) == history_.end()) {
       CPTR tmp = std::make_shared<Counter>();
-      history_[now] = tmp;
+      history_[time] = tmp;
       CleanUpSnapshot();
     }
-    return history_.rbegin()->second;
+    return history_[time];
   }
+  CPTR Current() { return Specified(Now()); }
+  CPTR Previous(size_t k = 1) { return Specified(Now() - k); }
   void PopCounter() {
     auto target = history_.begin()->second;
     akasha_->Superposition(*target, true);
@@ -115,10 +116,11 @@ struct HistoricalStatistics {
       }
     }
 
-
-  CPTR at(StatisticsType type) {
+  CPTR at(StatisticsType type, int64_t before = 0) {
+    assert(before == 0 || type == TypeSpecified);
     switch(type) {
     case TypeLatest: return Current(); 
+    case TypeSpecified: return Previous(before);
     case TypeRecent: return recent_;
     case TypeHistorical: return akasha_;
     default: assert(false); return nullptr;
@@ -129,7 +131,7 @@ struct HistoricalStatistics {
     akasha_->Inc(label, size);
     recent_->Inc(label, size); 
   }
-  Counter::TypeData Get(StatisticsType type, Counter::TypeLabel label) { return (*at(type))[label]; }
+  Counter::TypeData Get(StatisticsType type, Counter::TypeLabel label, TypeTime time = 0) { return (*at(type, time))[label]; }
 
   // When a node inherits the contents of the original node in proportion k, 
   // ParaTable must give an initialization scheme.
@@ -161,6 +163,8 @@ struct Statistics {
     std::string guard_;
     RangedHistoricalStatistics(const Slice& guard, std::shared_ptr<StatisticsOptions> options)
     : HistoricalStatistics(options), guard_(guard.ToString()) {}
+    RangedHistoricalStatistics(const RangedHistoricalStatistics& src)
+    : HistoricalStatistics(src), guard_(src.Guard().ToString()) {}
     int Compare(const Slice& key) const { return Slice(guard_).compare(key); }
     Slice Guard() const { return guard_; }
   };
@@ -180,28 +184,52 @@ struct Statistics {
   : options_(options), 
     shards_({std::make_shared<RangedHistoricalStatistics>("", options)}),
     last_seperated_time_(0) {}
+  virtual void Clear() { 
+    auto tmp = std::make_shared<RangedHistoricalStatistics>(shards_[0]->Guard(), options_);
+    shards_.clear(); 
+    shards_.push_back(tmp);
+  }
   virtual void Inc(uint32_t label, int size) { shards_[0]->Inc(label, size); }
   virtual void Inc(const Slice& key, uint32_t label, int size) { at(key)->Inc(label, size); }
-  virtual void Set(const Slice& key, uint32_t label, uint64_t size) { at(key)->Inc(label, size); }
+  virtual void Set(const Slice& key, uint32_t label, int64_t size) { at(key)->Inc(label, size); }
   virtual Counter::TypeData Get(StatisticsType type, Counter::TypeLabel label) const { 
     Counter::TypeData result = 0;
     for (RHSP shard : shards_) 
       result += shard->Get(type, label);
     return result; 
   }
-  virtual void Scale(double k) { for (auto& rhsp : shards_) rhsp->Scale(k); }
-  virtual void Superposition(const Statistics& bro) { 
-    for (auto rhsp : bro.shards_) InsertRHSP(rhsp);
+  virtual Counter::TypeData SpecifiedGet(const Slice& key, size_t time_before, Counter::TypeLabel label) {
+    auto shard = at(key);
+    return shard->Get(StatisticsType::TypeSpecified, label, time_before); 
+  }
+  virtual void Scale(double k) { 
+    assert(-1 <= k && k <= 1);
+    for (auto& rhsp : shards_) 
+      rhsp->Scale(k); 
+  }
+  virtual void Superposition(const Statistics& bro, double k = 1) { 
+    assert(-1 <= k && k <= 1);
+    for (auto rhsp : bro.shards_) 
+      InsertCopyRHSP(rhsp, k);
     last_seperated_time_ = options_->NowTimeSlice();
+  }
+  virtual void MoveTo(std::shared_ptr<Statistics> target, double k) {
+    ForceMerge();
+    auto tmp = std::make_shared<Statistics>(*this);
+    tmp->Scale(k);
+    target->Superposition(*tmp);
+    tmp->Scale(-1);
+    Superposition(*tmp);
+    ForceMerge();
   }
   void SetGuard(const Slice& key) { shards_[0]->guard_ = key.ToString(); }
   void Inherit(std::shared_ptr<Statistics> src, const Slice& guard) {
     for (size_t i = 0; i < src->shards_.size(); ++i) {
       auto shard = src->shards_[i];
       if (shard->Compare(guard) > 0) {
-        if (i > 1) i--;
+        if (i >= 1 && !src->shards_[i-1]->Guard().empty()) i--;
         for (size_t j = i; j < src->shards_.size(); ++j)
-          InsertRHSP(src->shards_[j]);
+          InsertCopyRHSP(src->shards_[j]);
         src->shards_.erase(src->shards_.begin() + i, src->shards_.end());
         break;
       }
@@ -223,6 +251,10 @@ struct Statistics {
     }
     shards_.resize(1);
   }
+  void InsertBlankShard(const Slice& key) {
+    auto tmp = std::make_shared<RangedHistoricalStatistics>(key, options_);
+    InsertCopyRHSP(tmp);
+  }
  private:
   RHSP at(const Slice& key) {
     assert(!shards_.empty());
@@ -234,17 +266,20 @@ struct Statistics {
     //assert(false);return nullptr;
   }
   // When a node merges another node, ParaTable must give a merging scheme.
-  void InsertRHSP(RHSP stats) {
+  void InsertCopyRHSP(RHSP stats, double k = 1) {
+    auto copy = std::make_shared<RangedHistoricalStatistics>(*stats);
+    if (k != 1) copy->Scale(k);
+    copy->options_ = options_;
     for (size_t i = 0; i < shards_.size(); ++i) {
       if (shards_[i]->Compare(stats->Guard()) > 0) {
-        shards_.insert(shards_.begin() + i, stats);
+        shards_.insert(shards_.begin() + i, copy);
         return;
       }
     }
-    shards_.push_back(stats);
+    shards_.push_back(copy);
   }
   void MergeCheck() {
-    if (shards_.size() <= 1) return;
+    if (shards_.size() <= 1 || options_->TimeBeforeMerge() == -1) return;
     uint64_t now = options_->NowTimeSlice();
     if (now < last_seperated_time_ + options_->TimeBeforeMerge())
       return;

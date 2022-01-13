@@ -36,7 +36,8 @@ struct StatisticsOptions {
   virtual uint64_t TimeSliceMaximumSize() const = 0;
 
   // Waiting time before merging records.
-  virtual uint64_t TimeBeforeMerge() const = 0;
+  // -1 means never merge.
+  virtual int64_t TimeBeforeMerge() const = 0;
 
   // Env::NowMicros() is needed to get the current time 
   // to determine which time slice the data is saved in.
@@ -83,7 +84,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
  public:
   virtual uint64_t TimeSliceMicroSecond() const override { return time_slice_; }
   virtual uint64_t TimeSliceMaximumSize() const override { return time_count_; }
-  virtual uint64_t TimeBeforeMerge() const override { return time_slice_ / 6; }
+  virtual int64_t TimeBeforeMerge() const override { return time_slice_ / 6; }
   virtual uint64_t NowTimeSlice() const override { return TimerEnv()->NowMicros() / time_slice_; }
   virtual double kBaseWeight() const override { return B; }
   virtual double kIntegrationWeight() const override { return I; }
@@ -95,6 +96,20 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
  public:
   SBSOptions() = default;
   SBSOptions(const SBSOptions& options) = default;
+};
+
+struct DelineatorOptions : public StatisticsOptions {
+  virtual uint64_t TimeSliceMicroSecond() const override { return 60 * 1000 * 1000; }
+  virtual uint64_t TimeSliceMaximumSize() const override { return 25; }
+
+  // Waiting time before merging records.
+  virtual int64_t TimeBeforeMerge() const override { return -1; }
+  static leveldb::Env* TimerEnv() { return leveldb::Env::Default(); }
+  virtual uint64_t NowTimeSlice() const override { return TimerEnv()->NowMicros() / TimeSliceMicroSecond(); }
+
+  virtual double kBaseWeight() const override { return 0; }
+  virtual double kIntegrationWeight() const override { return 0; }
+  virtual double kDifferentiationWeight() const override { return 0; }
 };
 
 
