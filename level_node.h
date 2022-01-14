@@ -24,7 +24,7 @@ struct LevelNode : public Printable {
   : next_(next), 
     buffer_(), 
     statistics_dirty_(true),
-    tree_stats_(std::make_shared<Statistics>(stat_options)) {}
+    tree_stats_(std::make_shared<Statistics>(stat_options, stat_options->NowTimeSlice())) {}
 
   void Add(std::shared_ptr<BoundedValue> value) { buffer_.Add( value); tree_stats_->MergeStatistics(value); }
   std::shared_ptr<BoundedValue> Del(std::shared_ptr<BoundedValue> value) { 

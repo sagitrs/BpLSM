@@ -65,8 +65,8 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
   void PushBack(int64_t time, const Counter& counter) {
     if (isFull()) return;
     assert(time == ed_time_ + 1);
-    (*this)[time] = counter;
     ed_time_ = time;
+    (*this)[time] = counter;
   }
   void Push(int64_t time, const Counter& counter) {
     if (time <= ed_time_) {
@@ -111,7 +111,7 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
   }
 };
 
-struct Statistics : public Statistable, public Printable {
+struct Statistics : virtual public Statistable, virtual public Printable {
  private:
   std::shared_ptr<StatisticsOptions> options_;
   TTLQueue queue_;

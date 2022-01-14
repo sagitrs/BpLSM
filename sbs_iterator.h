@@ -106,7 +106,7 @@ struct CoordinatesStack : private std::vector<Coordinates> {
   void Clear() { clear(); }
   void SetToIterator(const CoordinatesStackIterator& iter) { Resize(iter.CurrentCursor() + 1); }
   std::shared_ptr<CoordinatesStackIterator> NewIterator() const { 
-    return std::make_shared<CoordinatesStackIterator>(this); 
+    return std::make_shared<CoordinatesStackIterator>(const_cast<CoordinatesStack*>(this)); 
   }
 };
 
