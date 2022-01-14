@@ -15,11 +15,25 @@ enum BCP : uint8_t {
   BEqual, BDifferent           // will not be used.
 };
 
-struct Value {
-  virtual ~Value() {}
-  virtual uint64_t Identifier() const { return reinterpret_cast<uint64_t>(this); }
-  bool operator ==(const Value& obj) const { return Identifier() == obj.Identifier(); }
-  virtual std::string ToString() const { return std::to_string(Identifier()); }
+struct Statistable {
+  typedef uint32_t TypeLabel;
+  typedef int64_t TypeData;
+  typedef int64_t TypeTime;
+
+  virtual void UpdateTime(TypeTime time) = 0;
+  virtual TypeTime CurrentTime() = 0;
+  
+  virtual void UpdateStatistics(TypeLabel label, TypeData diff, TypeTime time) = 0;
+  virtual TypeData GetStatistics(TypeLabel type, TypeTime time) = 0;
+  //virtual void MergeStatistics(const Statistable& target) = 0;
+  virtual void ScaleStatistics(int numerator, int denominator) = 0;
+  
+  virtual ~Statistable() {}
+};
+
+struct Identifiable {
+  virtual uint64_t Identifier() const = 0;
+  bool operator ==(const Identifiable& obj) const { return Identifier() == obj.Identifier(); }
 };
 
 struct Bounded {
@@ -53,14 +67,19 @@ struct Bounded {
   }
 };
 
-struct BoundedValue : virtual public Value, virtual public Bounded {}; 
+struct BoundedValue : virtual public Bounded, 
+                      virtual public Identifiable, 
+                      virtual public Statistable 
+{
+  
+}; 
 
-struct BRealBounded : virtual public Bounded {
+struct RealBounded : virtual public Bounded {
  private:
   std::string min_, max_;
  public:
-  BRealBounded(const Slice& min, const Slice& max) : min_(min.ToString()), max_(max.ToString()) {}
-  virtual ~BRealBounded() {}
+  RealBounded(const Slice& min, const Slice& max) : min_(min.ToString()), max_(max.ToString()) {}
+  virtual ~RealBounded() {}
   virtual Slice Min() const override { return min_; }
   virtual Slice Max() const override { return max_; }
  public: 
@@ -76,11 +95,6 @@ struct BRealBounded : virtual public Bounded {
   virtual void Rebound(const Bounded& target) { Rebound(target.Min(), target.Max()); }
   bool OnBound(const Slice& a, const Slice& b) { return (a.compare(min_) == 0 || b.compare(max_) == 0); }
   bool OnBound(const Bounded& target) { return OnBound(target.Min(), target.Max()); }
-};
-
-struct FakeBoundedValue : public BRealBounded, virtual public Value {
-  FakeBoundedValue(const Slice& min, const Slice& max)
-  : BRealBounded(min, max) {} 
 };
 
 }

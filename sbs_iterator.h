@@ -38,7 +38,7 @@ struct Coordinates {
     if (guards)
       node_->GetChildGuard(height_, guards);
   }
-  std::shared_ptr<Statistics> Statistics(StatisticsType type) {
+  std::shared_ptr<Statistics> GetStatistics(StatisticsType type) {
     switch(type) {
     case StatisticsType::TypeNode:
       return node_->level_[height_]->node_stats_;
@@ -170,7 +170,7 @@ struct SBSIterator {
   // ---------------------iterator operation end-----------------
  private:
   bool SeekNode(Coordinates target) {
-    BRealBounded bound(target.node_->Guard(), target.node_->Guard());
+    RealBounded bound(target.node_->Guard(), target.node_->Guard());
     SeekRange(bound, false);
     auto iter = s_.NewIterator();
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
@@ -288,7 +288,7 @@ struct SBSIterator {
     auto iter = s_.NewIterator();
     size_t counter = 0;
     for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
-      auto stats = iter->Current().Statistics(TypeChild);
+      auto stats = iter->Current().GetStatistics(TypeChild);
       if (stats)
         stats->Inc(DefaultCounterType::GetCount, counter);
       counter += iter->Current().GetRanges(results, range);
@@ -355,8 +355,8 @@ struct SBSIterator {
     if (target.height_ == 0) {
       assert(target.Buffer().empty());
       if (recycler)
-        recycler->Superposition(*target.Statistics(TypeNode));
-      target.Statistics(TypeNode)->Clear();
+        recycler->Superposition(*target.GetStatistics(TypeNode));
+      target.GetStatistics(TypeNode)->Clear();
     }
 
     // for inner node:
@@ -417,17 +417,17 @@ struct SBSIterator {
     switch(type) {
     case StatisticsType::TypeNode:
     case StatisticsType::TypeChild:
-      return s_.Top().Statistics(type);
+      return s_.Top().GetStatistics(type);
     case StatisticsType::TypeMerged:
     case StatisticsType::TypeDecayingMerged: {
       auto iter = s_.NewIterator();
       iter->SeekToLast();
-      auto tmp = std::make_shared<Statistics>(*iter->Current().Statistics(TypeNode));
+      auto tmp = std::make_shared<Statistics>(*iter->Current().GetStatistics(TypeNode));
       double k = 1;
       for (iter->Prev(); iter->Valid(); iter->Prev()) {
         if (type == TypeDecayingMerged) 
           k /= iter->Current().Width();
-        auto curr = iter->Current().Statistics(TypeNode);
+        auto curr = iter->Current().GetStatistics(TypeNode);
         tmp->Superposition(*curr, k);
       }
       tmp->ForceMerge();

@@ -6,6 +6,21 @@
 
 namespace sagitrs {
 
+#define STATISTICS_PREVIOUS  1
+#define STATISTICS_CURRENT   0
+#define STATISTICS_ALL      -1
+#define STATISTICS_AVERAGE  -2
+
+enum DefaultTypeLabel : uint32_t {
+  LeafCount = 0,
+  // Construct: Set to 1 for leaf node, 0 for non-leaf node.
+  // Update: Never change.
+  GetCount,
+  // Construct: Set to 0 for all nodee.
+  // Update: increase when buffer element is read.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+  DefaultCounterTypeMax
+};
+
 struct SBSNodeOptions {
   // The width of each layer of the node, except for the Head node, 
   // must not be LOWER than this value.
@@ -28,6 +43,7 @@ struct SBSNodeOptions {
 };
 
 struct StatisticsOptions {
+  virtual size_t StatisticsLabelMax() const = 0;
   // The duration of a time slice in microseconds.
   // For example, if you want to set the time slice to 60 seconds, 
   // this value would be 60 * 1000000.
@@ -82,6 +98,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   double B = 0.1, I = 0.9, D = 0.0;
   static leveldb::Env* TimerEnv() { return leveldb::Env::Default(); }
  public:
+  virtual size_t StatisticsLabelMax() const override { return DefaultCounterTypeMax; }
   virtual uint64_t TimeSliceMicroSecond() const override { return time_slice_; }
   virtual uint64_t TimeSliceMaximumSize() const override { return time_count_; }
   virtual int64_t TimeBeforeMerge() const override { return time_slice_ / 6; }

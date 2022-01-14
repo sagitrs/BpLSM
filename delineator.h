@@ -1,4 +1,5 @@
 #pragma once
+/*
 #include "statistics.h"
 
 namespace sagitrs {
@@ -78,3 +79,5 @@ struct Delineator : private Statistics {
 };
 
 }
+
+*/

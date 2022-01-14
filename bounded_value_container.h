@@ -10,14 +10,14 @@ namespace sagitrs {
 typedef std::vector<std::shared_ptr<BoundedValue>> BoundedValueContainerBaseType;
 
 struct BoundedValueContainer : public BoundedValueContainerBaseType, 
-                               public BRealBounded {
+                               public RealBounded {
   BoundedValueContainer() :   // Copy function.
     BoundedValueContainerBaseType(),
-    BRealBounded("Undefined", "Undefined") {}
+    RealBounded("Undefined", "Undefined") {}
 
   BoundedValueContainer(const BoundedValueContainerBaseType& container) :   // Copy function.
     BoundedValueContainerBaseType(container),
-    BRealBounded("Undefined", "Undefined") { Rebound(); }
+    RealBounded("Undefined", "Undefined") { Rebound(); }
 
   static int StaticCompare(const std::shared_ptr<BoundedValue> &a, const std::shared_ptr<BoundedValue> &b) {
     int cmp = a->Min().compare(b->Min());
@@ -26,9 +26,9 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
   }
   void Add(std::shared_ptr<BoundedValue> value) { 
     if (size() > 0)
-      BRealBounded::Extend(*value);
+      RealBounded::Extend(*value);
     else
-      BRealBounded::Rebound(*value);
+      RealBounded::Rebound(*value);
 
     if (empty()) 
       push_back(value);
@@ -77,11 +77,11 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
   }
   void Rebound() {
     if (size() == 0) { 
-      BRealBounded::Rebound("Undefined", "Undefined"); 
+      RealBounded::Rebound("Undefined", "Undefined"); 
       return; 
     }
     auto iter = begin();
-    BRealBounded::Rebound(*(*iter));
+    RealBounded::Rebound(*(*iter));
     for (iter ++;iter != end(); iter ++) 
       Extend(*(*iter)); 
   }

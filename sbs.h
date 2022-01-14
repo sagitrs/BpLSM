@@ -33,9 +33,9 @@ struct LeveledScorer : public Scorer {
     {
       if (!level0_found_ && buffer_size > 0) {
         level0_found_ = true;
-        buffer_score = 1.0 * buffer_size / (max_level0_size_ + 1);
+        buffer_score = 1.0 * buffer_size / (std::max(Width(), max_level0_size_) + 1);
       } else {
-        buffer_score = 1.0 * buffer_size / (max_tiered_runs_ + 1); 
+        buffer_score = 1.0 * buffer_size / (std::max(Width(), max_tiered_runs_) + 1); 
       }
     }
     double get_score = 0;
@@ -76,7 +76,7 @@ struct SBSkiplist {
     head_(std::make_shared<SBSNode>(options_, 6)),
     iter_(head_) {}
 
-  void Put(TypeValuePtr value, std::shared_ptr<Statistics> stats, bool buffered = false) {
+  void Put(TypeValuePtr value, std::shared_ptr<Statistics> stats = nullptr, bool buffered = false) {
     iter_.SeekToRoot();
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
     if (buffered) { iter_.AddBuffered(*options_, target); return; }
@@ -112,7 +112,7 @@ struct SBSkiplist {
     iter_.SeekToRoot();
     iter_.SeekRange(range);
     //std::cout << iter.ToString() << std::endl;
-    auto bound = std::make_shared<BRealBounded>(range.Min(), range.Max());
+    auto bound = std::make_shared<RealBounded>(range.Min(), range.Max());
     iter_.GetBufferOnRoute(container, bound, scorer);
   }
   bool Del(TypeValuePtr value, std::shared_ptr<Statistics> recycler = nullptr) {
