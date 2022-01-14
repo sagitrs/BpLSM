@@ -9,16 +9,15 @@
 
 namespace sagitrs {
 
-
-struct Counter : public std::array<int64_t, DefaultCounterTypeMax> {
+struct Counter : public std::array<int64_t, DefaultCounterTypeMax>, public Printable {
   using std::array<int64_t, DefaultCounterTypeMax>::operator[];
   void clear() {
     for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
-      std::array<int64_t, DefaultCounterTypeMax>::operator[i] = 0;
+      std::array<int64_t, DefaultCounterTypeMax>::operator[](i) = 0;
   }
   Counter& operator+=(const Counter& counter) {
     for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
-      std::array<int64_t, DefaultCounterTypeMax>::operator[i] += counter[i];
+      std::array<int64_t, DefaultCounterTypeMax>::operator[](i) += counter[i];
     return *this;
   }
   Counter& operator*=(int k) {
@@ -34,9 +33,17 @@ struct Counter : public std::array<int64_t, DefaultCounterTypeMax> {
         std::array<int64_t, DefaultCounterTypeMax>::operator[](i) /= k;
     return *this;
   }
+  virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
+    for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
+      snapshot.emplace_back(std::to_string(i), std::to_string(operator[](i)));
+  }
+  void Clear() {
+    for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
+      std::array<int64_t, DefaultCounterTypeMax>::operator[](i) = 0;
+  }
 };
 
-struct TTLQueue : public std::vector<Counter> {
+struct TTLQueue : public std::vector<Counter>, public Printable {
   int64_t ttl_;
   int64_t create_time_, st_time_, ed_time_;
   TTLQueue(int64_t ttl, int64_t time) 
@@ -92,19 +99,37 @@ struct TTLQueue : public std::vector<Counter> {
     assert(st_time_ <= time && time <= ed_time_);
     return std::vector<Counter>::operator[](time % ttl_);
   }
+  void Clear() {
+    st_time_ = ed_time_ = create_time_;
+    operator[](ed_time_).Clear();
+  }
+  virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
+    for (auto t = st_time_; t <= ed_time_; ++t) {
+      snapshot.emplace_back(std::to_string(t), ">");
+      operator[](t).GetStringSnapshot(snapshot);
+    }
+  }
 };
 
-struct Statistics : public Statistable {
+struct Statistics : public Statistable, public Printable {
  private:
   std::shared_ptr<StatisticsOptions> options_;
   TTLQueue queue_;
   Counter history_;
  public:
+ // a null statistics. neve use it.
+  Statistics(std::shared_ptr<StatisticsOptions> options) : options_(nullptr), queue_(0, 0), history_() { assert(options == nullptr); }
+ // 
   Statistics(std::shared_ptr<StatisticsOptions> options, TypeTime time) 
   : options_(options), 
     queue_(options_->TimeSliceMaximumSize(), time),
     history_() {}
   Statistics(const Statistics& src) = default;
+  virtual void CopyStatistics(std::shared_ptr<Statistable> target) override {
+    queue_.Clear();
+    history_.Clear();
+    MergeStatistics(target);
+  }
   virtual void UpdateTime(TypeTime time) override {
     Counter blank;
     queue_.Push(time, blank);
@@ -123,6 +148,11 @@ struct Statistics : public Statistable {
       return queue_[time][label];
     }
   }
+  virtual void MergeStatistics(std::shared_ptr<Statistable> target) override {
+    if (target == nullptr) return;
+    auto stats = std::dynamic_pointer_cast<Statistics>(target);
+    MergeStatistics(*stats);
+  }
   virtual void MergeStatistics(const Statistics& target) {
     if (target.queue_.ed_time_ > queue_.ed_time_)
       UpdateTime(target.queue_.ed_time_);
@@ -138,6 +168,11 @@ struct Statistics : public Statistable {
     history_ /= denominator;
   }
   virtual ~Statistics() {}
+
+  virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
+    queue_.GetStringSnapshot(snapshot);
+    history_.GetStringSnapshot(snapshot);
+  }
  };
 
 }

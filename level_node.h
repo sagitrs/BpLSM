@@ -12,7 +12,7 @@ namespace sagitrs {
 struct SBSNode;
 typedef BoundedValueContainer TypeBuffer;
 
-struct LevelNode {
+struct LevelNode : public Printable {
   std::shared_ptr<SBSNode> next_;
   TypeBuffer buffer_;
 
@@ -23,22 +23,31 @@ struct LevelNode {
   LevelNode(std::shared_ptr<StatisticsOptions> stat_options, std::shared_ptr<SBSNode> next = nullptr) 
   : next_(next), 
     buffer_(), 
+    statistics_dirty_(true),
     tree_stats_(std::make_shared<Statistics>(stat_options)) {}
 
-  void Add(std::shared_ptr<BoundedValue> value) { buffer_.Add( value); tree_stats_->MergeStatistics(*value); }
-  void Del(std::shared_ptr<BoundedValue> value) { buffer_.Del(*value); statistics_dirty_ = true; }
+  void Add(std::shared_ptr<BoundedValue> value) { buffer_.Add( value); tree_stats_->MergeStatistics(value); }
+  std::shared_ptr<BoundedValue> Del(std::shared_ptr<BoundedValue> value) { 
+    auto res = buffer_.Del(*value); 
+    statistics_dirty_ = true;
+    return res;
+  }
   bool Contains(std::shared_ptr<BoundedValue> value) const { return buffer_.Contains(*value); }
   bool Overlap() const { return buffer_.Overlap(); }
   bool isDirty() const { return !buffer_.empty(); }
+  bool isStatisticsDirty() const { return statistics_dirty_; }
   void Absorb(std::shared_ptr<LevelNode> target) { 
     next_ = target->next_;
     buffer_.AddAll(target->buffer_);
     statistics_dirty_ = true;
   }
-  void GetStringLog(std::vector<std::string>& set) {
-    GetTreeStats()->GetStringLog(set);
-    buffer_.GetStringLog(set);
+  
+  virtual void GetStringSnapshot(std::vector<KVPair>& set) const override {
+    assert(!isStatisticsDirty());
+    tree_stats_->GetStringSnapshot(set);
+    buffer_.GetStringSnapshot(set);
   }
+  
 
 };
 

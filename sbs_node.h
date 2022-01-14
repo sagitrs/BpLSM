@@ -16,7 +16,7 @@ struct SBSIterator;
 struct Coordinates;
 struct Scorer;
 
-struct SBSNode {
+struct SBSNode : public Printable {
   typedef std::shared_ptr<SBSNode> SBSP;
   typedef std::shared_ptr<BoundedValue> ValuePtr;
   typedef LevelNode InnerNode;
@@ -138,46 +138,32 @@ struct SBSNode {
     }
     return 1;
   }
-  void Add(const SBSOptions& options, size_t height, ValuePtr range, std::shared_ptr<Statistics> stats) {
-    level_[height]->Add(range, is_head_);
-    if (stats)
-      level_[height]->node_stats_->Superposition(*stats);
-    {
-      //level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::PutCount, 1);
-      if (height == 0)
-        level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::LeafCount, 1);           // Leaf Count & Put Count.
-    }
+  void Add(const SBSOptions& options, size_t height, ValuePtr range) {
+    level_[height]->Add(range);
     if (pacesetter_ == nullptr || Guard().compare(range->Min()) > 0)
       pacesetter_ = range;
   }
-  void Del(size_t height, ValuePtr range) {
-    level_[height]->Del(range, is_head_);
-    {
-      //level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::DelCount, 1);
-      if (height == 0)
-        level_[height]->node_stats_->Inc(range->Min(), DefaultCounterType::LeafCount, -1);          // Leaf Count & Del Count.
-    }
+  ValuePtr Del(size_t height, ValuePtr range) {
+    auto res = level_[height]->Del(range);
     if (Guard().compare(range->Min()) == 0)
       Rebound();
+    return res;
   }
   void DecHeight() { level_.pop_back(); }
-  void RefreshChildStatistics(size_t height) {
-    if (height == 0) return;
-    SBSP ed = Next(height);
-    auto& stat = level_[height]->child_stats_;
-    stat = std::make_shared<Statistics>(options_);
-    
-    auto &nst = level_[height - 1]->node_stats_;
-    auto &cst = level_[height - 1]->child_stats_;
-    if (nst) stat->Superposition(*nst);
-    if (cst) stat->Superposition(*cst);
-    for (auto i = Next(height - 1); i != ed; i = i->Next(height - 1)) {
-      auto &nst = i->level_[height - 1]->node_stats_;
-      auto &cst = i->level_[height - 1]->child_stats_;
-      if (nst) stat->Superposition(*nst);
-      if (cst) stat->Superposition(*cst);
-    }
-    stat->ForceMerge();
+  std::shared_ptr<Statistable> GetTreeStatistics(size_t height) {
+    if (height == 0) 
+      return level_[0]->buffer_.empty() ? nullptr : level_[0]->buffer_[0];
+    auto s = level_[height]->tree_stats_;
+    if (!level_[height]->isStatisticsDirty())
+      return s;
+    assert(height > 0);
+    s->CopyStatistics(GetTreeStatistics(height - 1));
+    for (SBSP i = Next(height - 1); i != Next(height); i = Next(height - 1))
+      s->MergeStatistics(i->GetTreeStatistics(height - 1));
+    for (auto value : level_[height]->buffer_)
+      s->MergeStatistics(value);
+    level_[height]->statistics_dirty_ = false;
+    return s;
   }
  private:
  public:
@@ -186,11 +172,9 @@ struct SBSNode {
       auto &a = level_[0]->buffer_;
       assert(a.size() == 2);
       auto tmp = std::make_shared<SBSNode>(options_, Next(0));
-      tmp->Add(options, 0, *a.rbegin(), nullptr);
+      tmp->Add(options, 0, *a.rbegin());
       SetNext(0, tmp);
       Del(0, *a.rbegin());
-      level_[0]->node_stats_->MoveTo(tmp->level_[0]->node_stats_, 0.5);
-      //tmp->level_[0]->node_stats_->Inherit(level_[0]->node_stats_, tmp->Guard());
     } else {
       assert(!level_[height]->isDirty());
       size_t width = Width(height);
@@ -199,22 +183,14 @@ struct SBSNode {
       assert(reserve > 1);
       SBSP next = Next(height);
       SBSP middle = Next(height - 1, reserve);
-      {
         auto tmp = std::make_shared<LevelNode>(options_, next);
-        level_[height]->node_stats_->MoveTo(tmp->node_stats_, 1.0 * reserve / width);
         middle->level_.push_back(tmp); 
         SetNext(height, middle);
-        RefreshChildStatistics(height);
-        middle->RefreshChildStatistics(height);
-      }
-      //middle->level_[height]->node_stats_->Inherit(level_[0]->node_stats_, tmp->Guard());
       // if this node is root node, increase height.
       if (is_head_ && height + 1 == Height()) {
         assert(false && "Error : try to increase tree height.");
         assert(next == nullptr);
         //IncHeight(level_[height]->node_stats_, nullptr);
-        // Todo : inherit problem to be solved.
-        RefreshChildStatistics(height + 1);
       }
     }
   }
@@ -226,16 +202,21 @@ struct SBSNode {
     level_[height]->Absorb(next->level_[height]);
     Rebound();
     next->DecHeight();
-    RefreshChildStatistics(height);
   }
  public:
-  std::string ToString() const {
+  virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
+    assert(false);
+  }
+  // make sure all tree stats are NOT dirty.
+  virtual std::string ToString() const override {
     std::stringstream ss;
     size_t width = 16;
     std::vector<std::string> info[Height()];
     size_t max_lines = 0;
     for (size_t i = 0; i < Height(); ++i) {
-      level_[i]->GetStringLog(info[i]);
+      std::vector<KVPair> snapshot;
+      level_[i]->GetStringSnapshot(snapshot);
+      for (auto& kv : snapshot) info[i].emplace_back(kv.first+"="+kv.second);
       if (info[i].size() > max_lines) max_lines = info[i].size();
     }
     for (size_t i = 0; i < max_lines; ++i) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <sstream>
 #include <vector>
 #include <string>
 #include <mutex>
@@ -15,17 +16,34 @@ enum BCP : uint8_t {
   BEqual, BDifferent           // will not be used.
 };
 
+struct Printable {
+  typedef std::pair<std::string, std::string> KVPair;
+  virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const = 0;
+  virtual void PrintTo(std::ostream& os) const {
+    std::vector<KVPair> snapshot;
+    GetStringSnapshot(snapshot);
+    for (auto& kv : snapshot) {
+      os << "\"" << kv.first << "\": \"" << kv.second << "\"," << std::endl;
+    }
+  }
+  virtual std::string ToString() const {
+    std::stringstream ss;
+    PrintTo(ss);
+    return ss.str();
+  }
+};
+
 struct Statistable {
   typedef uint32_t TypeLabel;
   typedef int64_t TypeData;
   typedef int64_t TypeTime;
 
   virtual void UpdateTime(TypeTime time) = 0;
-  virtual TypeTime CurrentTime() = 0;
   
   virtual void UpdateStatistics(TypeLabel label, TypeData diff, TypeTime time) = 0;
   virtual TypeData GetStatistics(TypeLabel type, TypeTime time) = 0;
-  //virtual void MergeStatistics(const Statistable& target) = 0;
+  virtual void MergeStatistics(std::shared_ptr<Statistable> target) = 0;  
+  virtual void CopyStatistics(std::shared_ptr<Statistable> target) = 0;
   virtual void ScaleStatistics(int numerator, int denominator) = 0;
   
   virtual ~Statistable() {}

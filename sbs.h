@@ -40,16 +40,10 @@ struct LeveledScorer : public Scorer {
     }
     double get_score = 0;
     {
-      int64_t leaves = GetStatistics(TypeHistorical, LeafCount);
-      //int64_t global_leaves = Global().global_stats_->Get(TypeHistorical, LeafCount);
-      int64_t get = GetStatistics(TypeHistorical, GetCount);
-      //int64_t global_get = Global().global_stats_->Get(TypeHistorical, GetCount);
-      if (buffer_size >= 1 && get >= allow_seek_ * buffer_size) {
-        get_score = 1;
-      }
+
     }
 
-    score = buffer_score + get_score;
+    score = buffer_score;
 
     //if (score > 1) score = 1;
     if (score < 0) score = 0;
@@ -76,11 +70,11 @@ struct SBSkiplist {
     head_(std::make_shared<SBSNode>(options_, 6)),
     iter_(head_) {}
 
-  void Put(TypeValuePtr value, std::shared_ptr<Statistics> stats = nullptr, bool buffered = false) {
+  void Put(TypeValuePtr value, bool buffered = false) {
     iter_.SeekToRoot();
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
     if (buffered) { iter_.AddBuffered(*options_, target); return; }
-    iter_.Add(*options_, target, stats);
+    iter_.Add(*options_, target);
     //iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
   }
   void BufferClear() {
@@ -88,9 +82,9 @@ struct SBSkiplist {
     iter_.SeekToRoot();
     iter_.GetBuffered(container);
     for (auto range : container)
-      iter_.Del(*options_, range, nullptr);
-    for (auto range : container)
-      iter_.Add(*options_, range, nullptr);
+      iter_.Del(*options_, range);
+    for (auto range : iter_.Recycler())
+      iter_.Add(*options_, range);
   }
   size_t BufferSize() { 
     BoundedValueContainer container;
@@ -115,10 +109,10 @@ struct SBSkiplist {
     auto bound = std::make_shared<RealBounded>(range.Min(), range.Max());
     iter_.GetBufferOnRoute(container, bound, scorer);
   }
-  bool Del(TypeValuePtr value, std::shared_ptr<Statistics> recycler = nullptr) {
+  bool Del(TypeValuePtr value) {
     iter_.SeekToRoot();
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    return iter_.Del(*options_, target, recycler);
+    return iter_.Del(*options_, target);
   }
   void PickFilesByIterator(int& height, BoundedValueContainer* containers) {
     height = iter_.Current().height_;
@@ -178,14 +172,6 @@ struct SBSkiplist {
   }
   void PrintStatistics(std::ostream& os) const {
     os << "----------Print Statistics Begin----------" << std::endl;
-    auto iter = std::make_shared<SBSIterator>(head_);
-    Delineator d(std::make_shared<DelineatorOptions>());
-    for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
-      auto tmp = iter->GetStatistics(TypeDecayingMerged);
-      tmp->SetGuard(iter->Current().node_->Guard());
-      d.Superposition(*tmp);
-    }
-    os << d.ToString(GetCount, 60);
     os << "----------Print Statistics End----------" << std::endl;
   }
  public:
@@ -212,6 +198,7 @@ struct SBSkiplist {
 
   }
   std::shared_ptr<SBSNode> GetHead() const { return head_; }
+  BoundedValueContainer& DeletedValue() { return iter_.Recycler(); }
 };
 
 }

@@ -9,16 +9,11 @@ struct Scorer {
  private:
   struct GlobalStatus {
     size_t head_height_;
-    std::shared_ptr<Statistics> global_stats_;
+    std::shared_ptr<Statistable> global_stats_;
     GlobalStatus(std::shared_ptr<SBSNode> head) {
       assert(head->is_head_);
       head_height_ = head->Height();
-      global_stats_ = std::make_shared<Statistics>(head->options_);
-
-      auto& nst = head->level_[head_height_ - 1]->node_stats_;
-      auto& cst = head->level_[head_height_ - 1]->child_stats_;
-      if (nst) global_stats_->Superposition(*nst);
-      if (cst) global_stats_->Superposition(*cst);
+      global_stats_ = head->GetTreeStatistics(head_height_ - 1);
     }
   };
   std::shared_ptr<GlobalStatus> status_;
@@ -62,14 +57,7 @@ struct Scorer {
   size_t Width() const { return node_->Width(height_); }
   size_t BufferSize() const { return node_->level_[height_]->buffer_.size(); }
   const GlobalStatus& Global() const { return *status_; }
-  int64_t GetStatistics(StatisticsType stype, DefaultCounterType label) {
-    int64_t res = 0;
-    if (node_->level_[height_]->node_stats_)
-      res += node_->level_[height_]->node_stats_->Get(stype, label);
-    if (node_->level_[height_]->child_stats_)
-      res += node_->level_[height_]->child_stats_->Get(stype, label);
-    return res;
-  }
+  std::shared_ptr<Statistable> GetStatistics() { return node_->GetTreeStatistics(height_); }
 };
 
 }

@@ -10,7 +10,8 @@ namespace sagitrs {
 typedef std::vector<std::shared_ptr<BoundedValue>> BoundedValueContainerBaseType;
 
 struct BoundedValueContainer : public BoundedValueContainerBaseType, 
-                               public RealBounded {
+                               public RealBounded,
+                               public Printable {
   BoundedValueContainer() :   // Copy function.
     BoundedValueContainerBaseType(),
     RealBounded("Undefined", "Undefined") {}
@@ -49,14 +50,15 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
   void AddAll(const BoundedValueContainer& b) {
     for (auto value : b) { Add(value); }
   }
-  bool Del(const BoundedValue& value) {
+  std::shared_ptr<BoundedValue> Del(const BoundedValue& value) {
     for (auto iter = begin(); iter != end(); ++iter) 
       if ((*iter)->Identifier() == value.Identifier()) {
+        auto res = *iter;
         erase(iter);
         if (OnBound(value)) Rebound();
-        return 1;
+        return res;
       }
-    return 0;
+    return nullptr;
   }
   bool Contains(const BoundedValue& value) const {
     for (auto iter = begin(); iter != end(); ++iter) 
@@ -86,18 +88,13 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
       Extend(*(*iter)); 
   }
 
-  void GetStringLog(std::vector<std::string>& set) const {
-    set.push_back(Min().ToString());
-    set.push_back(Max().ToString());
-    for (auto i = begin(); i != end(); ++i)
-      set.push_back(std::to_string((*i)->Identifier()));
-  }
-  std::string ToString() const {
-    std::vector<std::string> set;
-    GetStringLog(set);
-    std::stringstream ss;
-    for (auto s : set) { ss << s << ";"; }
-    return ss.str();
+  virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
+    snapshot.emplace_back("Min", Min().ToString());
+    snapshot.emplace_back("Max", Max().ToString());
+    for (size_t i = 0; i < size(); ++i)
+      snapshot.emplace_back(
+        std::to_string(i), 
+        std::to_string(operator[](i)->Identifier()));
   }
 };
 

@@ -24,12 +24,11 @@ struct Coordinates {
   int TestState(const SBSOptions& options) const { return node_->TestState(options, height_); }
   size_t Width() const { return node_->Width(height_); }
   bool Fit(const Bounded& range, bool no_overlap) const { return node_->Fit(height_, range, no_overlap); }
-  void Del(SBSNode::ValuePtr range) const { node_->Del(height_, range); }
-  void Add(const SBSOptions& options, SBSNode::ValuePtr range, std::shared_ptr<Statistics> stats) const { node_->Add(options, height_, range, stats); }
+  SBSNode::ValuePtr Del(SBSNode::ValuePtr range) const { return node_->Del(height_, range); }
+  void Add(const SBSOptions& options, SBSNode::ValuePtr range) const { node_->Add(options, height_, range); }
   bool Contains(SBSNode::ValuePtr value) const { return node_->level_[height_]->Contains(value); }
   void SplitNext(const SBSOptions& options) { node_->SplitNext(options, height_); }
   void AbsorbNext(const SBSOptions& options) { node_->AbsorbNext(options, height_); }
-  void RefreshChildStatistics() { node_->RefreshChildStatistics(height_); }
   void GetBufferWithChildGuard(BoundedValueContainer* results, BoundedValueContainer* guards) {
     if (results)
       GetRanges(*results, nullptr); 
@@ -38,34 +37,16 @@ struct Coordinates {
     if (guards)
       node_->GetChildGuard(height_, guards);
   }
-  std::shared_ptr<Statistics> GetStatistics(StatisticsType type) {
-    switch(type) {
-    case StatisticsType::TypeNode:
-      return node_->level_[height_]->node_stats_;
-    case StatisticsType::TypeChild:
-      return node_->level_[height_]->child_stats_;
-    default:
-      assert(false);
-      return nullptr;
-    }
-  }
+  std::shared_ptr<Statistable> GetTreeStatistics() { return node_->GetTreeStatistics(height_); }
   //bool operator ==(const Coordinates& b) { return node_ == b.node_; }
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
-  size_t GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
+  void GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
     auto& buffer = node_->level_[height_]->buffer_;
-    auto& statistics = node_->level_[height_]->node_stats_;
-    size_t count = 0;
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
       if (key == nullptr || (*i)->Compare(*key) == BOverlap) {
         results.Add(*i);
-        if (key != nullptr) {
-          Slice guard = (*i)->Min();
-          statistics->Inc(guard, DefaultCounterType::GetCount, 1);
-          ++count;
-        }
       }
     }
-    return count;
   }
   BoundedValueContainer& Buffer() { return node_->level_[height_]->buffer_; }
 
@@ -124,15 +105,16 @@ struct CoordinatesStack : private std::vector<Coordinates> {
   }
   void Clear() { clear(); }
   void SetToIterator(const CoordinatesStackIterator& iter) { Resize(iter.CurrentCursor() + 1); }
-  std::shared_ptr<CoordinatesStackIterator> NewIterator() { 
+  std::shared_ptr<CoordinatesStackIterator> NewIterator() const { 
     return std::make_shared<CoordinatesStackIterator>(this); 
   }
 };
 
-struct SBSIterator {
+struct SBSIterator : public Printable {
  private:
   CoordinatesStack s_;
   SBSNode::SBSP head_;
+  BoundedValueContainer recycler_;
   //-------------------------------------------------------------
   size_t SBSHeight() const { return head_->Height(); }
   //----------------------iterator operation---------------------
@@ -141,6 +123,7 @@ struct SBSIterator {
   void SeekToRoot() { 
     s_.Clear();
     s_.Push(Coordinates(head_, head_->Height()-1)); 
+    recycler_.clear();
   }
   void Next(size_t recursive = 1) {
     for (size_t i = 1; i <= recursive; ++i) {
@@ -263,44 +246,23 @@ struct SBSIterator {
         iter->Current().SplitNext(options);
       } while (iter->Current().TestState(options) > 0);
     }
-    // --------
-    if (update)
-      for (; iter->Valid(); iter->Prev())
-        iter->Current().RefreshChildStatistics();                                                         //  recalculate states in spliting.
   }
  public:
-  void Add(const SBSOptions& options, SBSNode::ValuePtr range, std::shared_ptr<Statistics> stats) {
+  void Add(const SBSOptions& options, SBSNode::ValuePtr range) {
     SeekRange(*range, true);
-    s_.Top().Add(options, range, stats);
+    s_.Top().Add(options, range);
     CheckSplit(options);
   }
-  void AddBuffered(const SBSOptions& options, SBSNode::ValuePtr range) { s_.Bottom().Add(options, range, nullptr); }
+  void AddBuffered(const SBSOptions& options, SBSNode::ValuePtr range) { s_.Bottom().Add(options, range); }
   void GetBuffered(BoundedValueContainer& results) { s_.Bottom().GetRanges(results); }
+  BoundedValueContainer& Recycler() { return recycler_; }
  private:
  public:
   // Get all the values on the path that are overlap with the given range.
   void GetBufferOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range, std::shared_ptr<Scorer> scorer = nullptr) {
-    CoordinatesStack stack;
-    if (scorer) {
-      scorer->Init(head_);
-      scorer->Reset(head_->options_->NeedsCompactionScore());
-    }
     auto iter = s_.NewIterator();
-    size_t counter = 0;
-    for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
-      auto stats = iter->Current().GetStatistics(TypeChild);
-      if (stats)
-        stats->Inc(DefaultCounterType::GetCount, counter);
-      counter += iter->Current().GetRanges(results, range);
-      //iter->Current().RefreshChildStatistics();
-      if (scorer && scorer->Update(iter->Current().node_, iter->Current().height_)) {
-        stack = s_;
-        stack.SetToIterator(*iter);
-      }
-    }
-    if (scorer && scorer->isUpdated()) {
-      s_ = stack;
-    }
+    for (iter->SeekToLast(); iter->Valid(); iter->Prev())
+      iter->Current().GetRanges(results, range);
   }
   void GetBufferInCurrent(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) { s_.Top().GetRanges(results, range); }
 
@@ -323,21 +285,21 @@ struct SBSIterator {
   // Assume: The current node contains the target value.
   // Delete a value within the current node which is the same as the given value.
   // This may recursively trigger a merge operation and possibly a split operation.
-  bool Del(const SBSOptions& options, SBSNode::ValuePtr range, std::shared_ptr<Statistics> recycler) {
+  bool Del(const SBSOptions& options, SBSNode::ValuePtr range) {
     std::deque<SBSNode::ValuePtr> reinsert_list;
-    bool ok = Del_(options, range, reinsert_list, recycler);
+    bool ok = Del_(options, range, reinsert_list);
     if (!ok) return 0;
     //s.push(range);
     while (!reinsert_list.empty()) {
       auto e = reinsert_list.front();
       reinsert_list.pop_front();
-      bool ok = Del_(options, e, reinsert_list, recycler);
+      bool ok = Del_(options, e, reinsert_list);
       assert(ok);
-      Add(options, e, nullptr);
+      Add(options, e);
     }
     return 1;
   }
-  bool Del_(const SBSOptions& options, SBSNode::ValuePtr value, std::deque<SBSNode::ValuePtr>& reinsert, std::shared_ptr<Statistics> recycler) {
+  bool Del_(const SBSOptions& options, SBSNode::ValuePtr value, std::deque<SBSNode::ValuePtr>& reinsert) {
     // 1. Delete file in target node.
     // 2. (for inner node) check if split happens. if so, stop here.
     // 3. (for leaf node) check if node became empty. if so, check absorb recursively.
@@ -349,15 +311,9 @@ struct SBSIterator {
     bool found = SeekBoundedValue(value);
     if (!found) return 0;
     auto target = s_.Top();
-    target.Del(value);
-
-    // for leaf node: 
-    if (target.height_ == 0) {
-      assert(target.Buffer().empty());
-      if (recycler)
-        recycler->Superposition(*target.GetStatistics(TypeNode));
-      target.GetStatistics(TypeNode)->Clear();
-    }
+    auto res = target.Del(value);
+    assert(res != nullptr);
+    recycler_.push_back(res);
 
     // for inner node:
     // check if recursively split is triggered.
@@ -406,44 +362,15 @@ struct SBSIterator {
           }
         }
       }
-      // Refresh child statistics.
-      s_.Top().RefreshChildStatistics();                                                              // refresh stats during deletion.
     }
     SeekToRoot();
     return 1;
   }
 
-  std::shared_ptr<Statistics> GetStatistics(StatisticsType type) {
-    switch(type) {
-    case StatisticsType::TypeNode:
-    case StatisticsType::TypeChild:
-      return s_.Top().GetStatistics(type);
-    case StatisticsType::TypeMerged:
-    case StatisticsType::TypeDecayingMerged: {
-      auto iter = s_.NewIterator();
-      iter->SeekToLast();
-      auto tmp = std::make_shared<Statistics>(*iter->Current().GetStatistics(TypeNode));
-      double k = 1;
-      for (iter->Prev(); iter->Valid(); iter->Prev()) {
-        if (type == TypeDecayingMerged) 
-          k /= iter->Current().Width();
-        auto curr = iter->Current().GetStatistics(TypeNode);
-        tmp->Superposition(*curr, k);
-      }
-      tmp->ForceMerge();
-      return tmp;
-    }
-    default:
-      assert(false);
-      return nullptr;
-    }
-  }
-  std::string ToString() {
-    std::stringstream ss;
+  virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
     auto iter = s_.NewIterator();
     for (iter->SeekToFirst(); iter->Valid(); iter->Next())
-      ss << iter->Current().ToString() << ",";
-    return ss.str();
+      snapshot.emplace_back("", iter->Current().ToString());
   }
 };
 
