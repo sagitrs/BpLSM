@@ -9,11 +9,12 @@
 
 namespace leveldb {
 
-struct TempKV : virtual public sagitrs::BoundedValue {
-  sagitrs::BRealBounded bound_;
+struct TempKV : virtual public sagitrs::BoundedValue, virtual public sagitrs::Statistics {
+  sagitrs::RealBounded bound_;
   uint64_t value_;
   TempKV(const Slice& a, const Slice& b, uint64_t value) 
-  : bound_(a, b), value_(value) {}
+  : sagitrs::Statistics(nullptr), 
+    bound_(a, b), value_(value) {}
   virtual Slice Min() const override { return bound_.Min(); }
   virtual Slice Max() const override { return bound_.Max(); }
   virtual uint64_t Identifier() const override { return value_; }

@@ -154,6 +154,7 @@ struct Statistics : virtual public Statistable, virtual public Printable {
     MergeStatistics(*stats);
   }
   virtual void MergeStatistics(const Statistics& target) {
+    if (!target.options_) return;
     if (target.queue_.ed_time_ > queue_.ed_time_)
       UpdateTime(target.queue_.ed_time_);
     queue_.Merge(target.queue_);

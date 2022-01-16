@@ -149,6 +149,7 @@ struct SBSkiplist {
  private:
   void PrintDetailed(std::ostream& os) const {
     os << "----------Print Detailed Begin----------" << std::endl;
+    head_->ForceUpdateStatistics();
     for (auto i = head_; i != nullptr; i = i->Next(0))
       os << i->ToString();
     os << "----------Print Detailed End----------" << std::endl;  

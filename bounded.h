@@ -22,9 +22,7 @@ struct Printable {
   virtual void PrintTo(std::ostream& os) const {
     std::vector<KVPair> snapshot;
     GetStringSnapshot(snapshot);
-    for (auto& kv : snapshot) {
-      os << "\"" << kv.first << "\": \"" << kv.second << "\"," << std::endl;
-    }
+    for (auto& kv : snapshot) { os << kv.first << ":" << kv.second << ","; }
   }
   virtual std::string ToString() const {
     std::stringstream ss;

@@ -158,7 +158,7 @@ struct SBSNode : public Printable {
       return s;
     assert(height > 0);
     s->CopyStatistics(GetTreeStatistics(height - 1));
-    for (SBSP i = Next(height - 1); i != Next(height); i = Next(height - 1))
+    for (SBSP i = Next(height - 1); i != Next(height); i = i->Next(height - 1))
       s->MergeStatistics(i->GetTreeStatistics(height - 1));
     for (auto value : level_[height]->buffer_)
       s->MergeStatistics(value);
@@ -206,6 +206,10 @@ struct SBSNode : public Printable {
  public:
   virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
     assert(false);
+  }
+  void ForceUpdateStatistics() {
+    assert(is_head_);
+    auto stat = GetTreeStatistics(Height() - 1);
   }
   // make sure all tree stats are NOT dirty.
   virtual std::string ToString() const override {
