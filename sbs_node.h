@@ -150,18 +150,21 @@ struct SBSNode : public Printable {
     return res;
   }
   void DecHeight() { level_.pop_back(); }
+  std::shared_ptr<Statistable> GetNodeStatistics(size_t height) { return level_[height]->buffer_.GetStatistics(); }
   std::shared_ptr<Statistable> GetTreeStatistics(size_t height) {
-    if (height == 0) 
-      return level_[0]->buffer_.empty() ? nullptr : level_[0]->buffer_[0];
+    //if (height == 0) 
+    //  return level_[0]->buffer_.empty() ? nullptr : level_[0]->buffer_[0];
     auto s = level_[height]->tree_stats_;
     if (!level_[height]->isStatisticsDirty())
       return s;
-    assert(height > 0);
-    s->CopyStatistics(GetTreeStatistics(height - 1));
-    for (SBSP i = Next(height - 1); i != Next(height); i = i->Next(height - 1))
-      s->MergeStatistics(i->GetTreeStatistics(height - 1));
-    for (auto value : level_[height]->buffer_)
-      s->MergeStatistics(value);
+    //assert(height > 0);
+    if (height > 0) {
+      s->CopyStatistics(GetTreeStatistics(height - 1));
+      for (SBSP i = Next(height - 1); i != Next(height); i = i->Next(height - 1))
+        s->MergeStatistics(i->GetTreeStatistics(height - 1));
+    } else
+      s->CopyStatistics(nullptr);
+    s->MergeStatistics(GetNodeStatistics(height));
     level_[height]->statistics_dirty_ = false;
     return s;
   }
@@ -214,7 +217,7 @@ struct SBSNode : public Printable {
   // make sure all tree stats are NOT dirty.
   virtual std::string ToString() const override {
     std::stringstream ss;
-    size_t width = 16;
+    size_t width = 20;
     std::vector<std::string> info[Height()];
     size_t max_lines = 0;
     for (size_t i = 0; i < Height(); ++i) {

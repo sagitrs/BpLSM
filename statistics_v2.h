@@ -10,6 +10,7 @@
 namespace sagitrs {
 
 struct Counter : public std::array<int64_t, DefaultCounterTypeMax>, public Printable {
+  Counter() : std::array<int64_t, DefaultCounterTypeMax>() {}
   using std::array<int64_t, DefaultCounterTypeMax>::operator[];
   void clear() {
     for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
@@ -35,14 +36,13 @@ struct Counter : public std::array<int64_t, DefaultCounterTypeMax>, public Print
   }
   virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
     for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
-      snapshot.emplace_back(std::to_string(i), std::to_string(operator[](i)));
+      snapshot.emplace_back("C["+std::to_string(i)+"]", std::to_string(operator[](i)));
   }
   void Clear() {
     for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
       std::array<int64_t, DefaultCounterTypeMax>::operator[](i) = 0;
   }
 };
-
 struct TTLQueue : public std::vector<Counter>, public Printable {
   int64_t ttl_;
   int64_t create_time_, st_time_, ed_time_;
@@ -55,7 +55,14 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
   int64_t size() const { return ed_time_ - st_time_ + 1; }
   int space() const { return ttl_ - size(); }
   bool isFull() const { return space() == 0; }
-  void PopBack(size_t recursive = 1) { st_time_ += recursive; }
+  void PopFront(size_t recursive = 1) { 
+    st_time_ += recursive; 
+    if (st_time_ > ed_time_) {
+      ed_time_ = st_time_;
+      operator[](ed_time_).Clear();
+    }
+      
+  }
   void PushFront(int64_t time, const Counter& counter) {
     assert(time + 1 == st_time_);
     if (isFull()) return;
@@ -73,8 +80,9 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
       PushFront(time, counter);
       return; 
     }
-    if (time > ed_time_ + space()) 
-      PopBack(time - ed_time_ - space());
+    if (time > ed_time_ + space()) {
+      PopFront(time - ed_time_ - space());
+    }
     if (time > ed_time_ + 1) {
       Counter blank;
       for (auto t = ed_time_ + 1; t < time; ++t)
@@ -83,12 +91,19 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
     PushBack(time, counter);
   }
   void Merge(const TTLQueue& queue) {
-    assert(ed_time_ == queue.ed_time_);
+    assert(ed_time_ >= queue.ed_time_);
+    for (auto t = st_time_ - 1; t > queue.ed_time_; t--) {
+      assert(t + 1 == st_time_);
+      Counter blank;
+      PushFront(t, blank);
+    }
     for (auto t = queue.ed_time_; t >= queue.st_time_; --t) {
       if (t >= st_time_)
         (*this)[t] += queue[t];
-      else 
-        PushBack(t, queue[t]);
+      else {
+        assert(t + 1 == st_time_);
+        PushFront(t, queue[t]);
+      }
     }
   }
   Counter& operator[](int64_t time) {
@@ -105,12 +120,11 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
   }
   virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
     for (auto t = st_time_; t <= ed_time_; ++t) {
-      snapshot.emplace_back(std::to_string(t), ">");
+      snapshot.emplace_back("Q["+std::to_string(t)+"]", "|");
       operator[](t).GetStringSnapshot(snapshot);
     }
   }
 };
-
 struct Statistics : virtual public Statistable, virtual public Printable {
  private:
   std::shared_ptr<StatisticsOptions> options_;
@@ -131,6 +145,7 @@ struct Statistics : virtual public Statistable, virtual public Printable {
     MergeStatistics(target);
   }
   virtual void UpdateTime(TypeTime time) override {
+    if (queue_.ed_time_ == time) return;
     Counter blank;
     queue_.Push(time, blank);
   }
@@ -144,21 +159,16 @@ struct Statistics : virtual public Statistable, virtual public Printable {
     case STATISTICS_ALL:
       return history_[label];
     default:
-      assert(queue_.TimeLegal(time));
-      return queue_[time][label];
+      if (queue_.TimeLegal(time)) 
+        return queue_[time][label];
+      else
+        return 0;
     }
   }
   virtual void MergeStatistics(std::shared_ptr<Statistable> target) override {
     if (target == nullptr) return;
     auto stats = std::dynamic_pointer_cast<Statistics>(target);
     MergeStatistics(*stats);
-  }
-  virtual void MergeStatistics(const Statistics& target) {
-    if (!target.options_) return;
-    if (target.queue_.ed_time_ > queue_.ed_time_)
-      UpdateTime(target.queue_.ed_time_);
-    queue_.Merge(target.queue_);
-    history_ += target.history_;
   }
   virtual void ScaleStatistics(int numerator, int denominator) override {
     for (auto t = queue_.st_time_; t <= queue_.ed_time_; ++t) {
@@ -172,7 +182,16 @@ struct Statistics : virtual public Statistable, virtual public Printable {
 
   virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
     queue_.GetStringSnapshot(snapshot);
+    snapshot.emplace_back("History", "|");
     history_.GetStringSnapshot(snapshot);
+  }
+ private:
+  virtual void MergeStatistics(const Statistics& target) {
+    if (!target.options_) return;
+    if (target.queue_.ed_time_ > queue_.ed_time_)
+      UpdateTime(target.queue_.ed_time_);
+    queue_.Merge(target.queue_);
+    history_ += target.history_;
   }
  };
 

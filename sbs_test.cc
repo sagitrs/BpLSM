@@ -12,41 +12,43 @@ namespace leveldb {
 struct TempKV : virtual public sagitrs::BoundedValue, virtual public sagitrs::Statistics {
   sagitrs::RealBounded bound_;
   uint64_t value_;
-  TempKV(const Slice& a, const Slice& b, uint64_t value) 
-  : sagitrs::Statistics(nullptr), 
+  TempKV(std::shared_ptr<sagitrs::StatisticsOptions> options, const Slice& a, const Slice& b, uint64_t value) 
+  : sagitrs::Statistics(options, options->NowTimeSlice()), 
     bound_(a, b), value_(value) {}
   virtual Slice Min() const override { return bound_.Min(); }
   virtual Slice Max() const override { return bound_.Max(); }
   virtual uint64_t Identifier() const override { return value_; }
 
   static std::shared_ptr<TempKV> FactoryBuild(size_t a, size_t b) {
+    static std::shared_ptr<sagitrs::SBSOptions> options = std::make_shared<sagitrs::SBSOptions>();
     std::string l = std::to_string(a);
     std::string r = std::to_string(b);
     uint64_t v = a * 100 + b;
-    return std::make_shared<TempKV>(l, r, v);
+    return std::make_shared<TempKV>(options, l, r, v);
   }
 };
 
 TEST(SBSTest, Empty) {}
 
 TEST(SBSTest, Simple) {
-  sagitrs::SBSOptions options;
-  sagitrs::SBSkiplist list(options);
+  auto options = std::make_shared<sagitrs::SBSOptions>();
+  sagitrs::SBSkiplist list(*options);
   for (size_t i =9; i >= 1; i --) {
     list.Put(TempKV::FactoryBuild(i*10+0, i*10+0));
     //std::cout << list.ToString() << std::endl;
     list.Put(TempKV::FactoryBuild(i*10+9, i*10+9));
     //std::cout << list.ToString() << std::endl;
   }
-  //std::cout << list.ToString() << std::endl;
+  std::cout << list.ToString() << std::endl;
+  return;
   for (size_t i = 1; i <= 9; ++i) {
     list.Put(TempKV::FactoryBuild(i*10+0, i*10+9));
     //std::cout << list.ToString() << std::endl;
   }
-  
-  //std::cout << list.ToString() << std::endl;
+  std::cout << list.ToString() << std::endl;
+  return;
   Slice target_key("70");
-  TempKV kv(target_key, target_key, 12345678);
+  TempKV kv(options, target_key, target_key, 12345678);
   sagitrs::BoundedValueContainer container[3];
   list.Get(kv, container[0]);
 

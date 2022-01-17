@@ -12,6 +12,28 @@ typedef std::vector<std::shared_ptr<BoundedValue>> BoundedValueContainerBaseType
 struct BoundedValueContainer : public BoundedValueContainerBaseType, 
                                public RealBounded,
                                public Printable {
+  bool stats_dirty_;
+  std::shared_ptr<Statistics> stats_;
+  void SetStatsDirty() { stats_dirty_ = true; }
+  std::shared_ptr<Statistics> GetStatistics() {
+    if (stats_dirty_) {
+      stats_ = nullptr;
+      for (auto i = begin(); i != end(); ++i) {
+        if (stats_) stats_->MergeStatistics(*i);
+        else {
+          auto sa = std::dynamic_pointer_cast<Statistable>(*i);
+          auto st = std::dynamic_pointer_cast<Statistics>(sa);
+          stats_ = std::make_shared<Statistics>(*st);
+        }
+      }
+      stats_dirty_ = false;
+    }
+    return stats_;
+  }
+
+
+
+
   BoundedValueContainer() :   // Copy function.
     BoundedValueContainerBaseType(),
     RealBounded("Undefined", "Undefined") {}
@@ -26,10 +48,13 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
     return cmp;
   }
   void Add(std::shared_ptr<BoundedValue> value) { 
+    // bound adjust.
     if (size() > 0)
       RealBounded::Extend(*value);
     else
       RealBounded::Rebound(*value);
+    // statistics adjust.
+    stats_dirty_ = true;
 
     if (empty()) 
       push_back(value);
@@ -49,23 +74,22 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
   }
   void AddAll(const BoundedValueContainer& b) {
     for (auto value : b) { Add(value); }
+    // statistics adjust.
+    stats_dirty_ = true;
   }
-  std::shared_ptr<BoundedValue> Del(const BoundedValue& value) {
-    for (auto iter = begin(); iter != end(); ++iter) 
-      if ((*iter)->Identifier() == value.Identifier()) {
-        auto res = *iter;
-        erase(iter);
-        if (OnBound(value)) Rebound();
-        return res;
-      }
-    return nullptr;
+  std::shared_ptr<BoundedValue> Del(uint64_t id) {
+    auto iter = Locate(id);
+    if (iter == end()) return nullptr;
+    // statistics adjust.
+    stats_dirty_ = true;
+
+    auto res = *iter;
+    erase(iter);
+    if (OnBound(*res)) Rebound();
+    return res;
   }
-  bool Contains(const BoundedValue& value) const {
-    for (auto iter = begin(); iter != end(); ++iter) 
-      if ((*iter)->Identifier() == value.Identifier()) 
-        return 1;
-    return 0;
-  }
+  bool Contains(uint64_t id) const { return Locate(id) != end(); }
+  std::shared_ptr<BoundedValue> Get(uint64_t id) { return *Locate(id); }
   bool Overlap() const {
     auto i = begin();
     auto prev = i;
@@ -93,9 +117,17 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
     snapshot.emplace_back("Max", Max().ToString());
     for (size_t i = 0; i < size(); ++i)
       snapshot.emplace_back(
-        std::to_string(i), 
+        "A["+std::to_string(i)+"]", 
         std::to_string(operator[](i)->Identifier()));
   }
+ private:
+  const std::__wrap_iter<const std::shared_ptr<sagitrs::BoundedValue> *> Locate(uint64_t id) const {
+    for (auto iter = begin(); iter != end(); ++iter) 
+    if ((*iter)->Identifier() == id) 
+      return iter;
+    return end();
+  } 
+  
 };
 
 }

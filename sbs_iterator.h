@@ -38,6 +38,8 @@ struct Coordinates {
       node_->GetChildGuard(height_, guards);
   }
   std::shared_ptr<Statistable> GetTreeStatistics() { return node_->GetTreeStatistics(height_); }
+  std::shared_ptr<Statistable> GetNodeStatistics() { return node_->GetNodeStatistics(height_); }
+  void SetStatisticsDirty() { node_->level_[height_]->statistics_dirty_ = true; }
   //bool operator ==(const Coordinates& b) { return node_ == b.node_; }
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
   void GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
@@ -47,6 +49,13 @@ struct Coordinates {
         results.Add(*i);
       }
     }
+  }
+  std::shared_ptr<BoundedValue> GetValue(uint64_t id) {
+    auto& buffer = node_->level_[height_]->buffer_;
+    for (auto i = buffer.begin(); i != buffer.end(); ++i)
+      if ((*i)->Identifier() == id) 
+        return *i;
+    return nullptr;
   }
   BoundedValueContainer& Buffer() { return node_->level_[height_]->buffer_; }
 
@@ -123,7 +132,7 @@ struct SBSIterator : public Printable {
   void SeekToRoot() { 
     s_.Clear();
     s_.Push(Coordinates(head_, head_->Height()-1)); 
-    recycler_.clear();
+    //recycler_.clear();
   }
   void Next(size_t recursive = 1) {
     for (size_t i = 1; i <= recursive; ++i) {
@@ -183,34 +192,20 @@ struct SBSIterator : public Printable {
       if (!dive) break;
     }
   }
-  bool SeekBoundedValue(SBSNode::ValuePtr value) {
-    SeekToRoot();
-    if (s_.Top().Contains(value)) return 1;
-    while (s_.Top().Fit(*value, false) && s_.Top().height_ > 0) {
-      auto ed = s_.Top().NextNode().DownNode();
-      bool dive = false;
-      for (Coordinates c = s_.Top().DownNode(); c.Valid() && !(c == ed); c.JumpNext()) 
-        if (c.Fit(*value, false)) {
-          s_.Push(c);
-          if (s_.Top().Contains(value))
-            return 1;
-          dive = true;
-          break;
-        }
-      if (!dive) break;
-    }
-    return 0;
-  }
   // Find elements on the path that exactly match the target object 
   // (including ranges and values).
   // Assert: Already SeekRange().
-  bool RouteContainsValue(SBSNode::ValuePtr value) {
+  std::shared_ptr<BoundedValue> SeekValueInRoute(uint64_t id) {
     auto iter = s_.NewIterator();
+    std::shared_ptr<BoundedValue> res = nullptr;
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-      if (iter->Current().Contains(value))
-        return 1;
+      res = iter->Current().GetValue(id);
+      if (res) {
+        s_.SetToIterator(*iter);
+        return res;
+      }
     }
-    return 0;
+    return nullptr;
   }
   // Add a value to the current node.
   // This may recursively trigger a split operation.
@@ -248,9 +243,22 @@ struct SBSIterator : public Printable {
     }
   }
  public:
-  void Add(const SBSOptions& options, SBSNode::ValuePtr range) {
-    SeekRange(*range, true);
-    s_.Top().Add(options, range);
+  void SetRouteStatisticsDirty() {
+    auto iter = s_.NewIterator();
+    iter->SeekToLast();
+    assert(iter->Valid());
+    iter->Current().Buffer().SetStatsDirty();
+    for (; iter->Valid(); iter->Prev()) 
+      iter->Current().SetStatisticsDirty();
+  }
+  void Add(const SBSOptions& options, SBSNode::ValuePtr value) {
+    SeekRange(*value, true);
+    //UpdateTargetStatistics(value->Identifier(), DefaultTypeLabel::LeafCount, 1, options.NowTimeSlice());
+    if (s_.Top().height_ == 0) 
+      value->UpdateStatistics(DefaultTypeLabel::LeafCount, 1, options.NowTimeSlice());           // inc leaf.
+    SetRouteStatisticsDirty();
+    s_.Top().Add(options, value);
+    //SetRouteStatisticsDirty();
     CheckSplit(options);
   }
   void AddBuffered(const SBSOptions& options, SBSNode::ValuePtr range) { s_.Bottom().Add(options, range); }
@@ -259,7 +267,7 @@ struct SBSIterator : public Printable {
  private:
  public:
   // Get all the values on the path that are overlap with the given range.
-  void GetBufferOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range, std::shared_ptr<Scorer> scorer = nullptr) {
+  void GetBufferOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range) {
     auto iter = s_.NewIterator();
     for (iter->SeekToLast(); iter->Valid(); iter->Prev())
       iter->Current().GetRanges(results, range);
@@ -308,11 +316,19 @@ struct SBSIterator : public Printable {
     //   3. recalculate node status.
     //   4. check if child node is less enough to check absorb recursively.
     // 4. recalculate all nodes' child-state.
-    bool found = SeekBoundedValue(value);
-    if (!found) return 0;
+    SeekToRoot();
+    SeekRange(*value);
+    auto res0 = SeekValueInRoute(value->Identifier());
+    if (res0 == nullptr) return 0;
+    //if (s_.Top().height_ == 0) s_.Top().->UpdateStatistics(DefaultTypeLabel::LeafCount, 1, options.NowTimeSlice());           // inc leaf.
+    //SetRouteStatisticsDirty();
+
     auto target = s_.Top();
     auto res = target.Del(value);
     assert(res != nullptr);
+    if (s_.Top().height_ == 0)
+      res->UpdateStatistics(DefaultTypeLabel::LeafCount, -1, options.NowTimeSlice());         // statistics.
+    SetRouteStatisticsDirty();
     recycler_.push_back(res);
 
     // for inner node:
@@ -371,6 +387,31 @@ struct SBSIterator : public Printable {
     auto iter = s_.NewIterator();
     for (iter->SeekToFirst(); iter->Valid(); iter->Next())
       snapshot.emplace_back("", iter->Current().ToString());
+  }
+  std::shared_ptr<Statistics> GetRouteMergedStatistics() {
+    auto iter = s_.NewIterator();
+    int div = 1;
+    std::shared_ptr<Statistics> sum = nullptr;
+
+    iter->SeekToLast();
+    auto stats = iter->Current().Buffer().GetStatistics();
+    if (stats)
+      sum = std::make_shared<Statistics>(*stats);
+    
+    for (iter->Prev(); iter->Valid(); iter->Prev()) {
+      div *= iter->Current().Width();
+      auto stats = iter->Current().Buffer().GetStatistics();
+      if (stats == nullptr) continue;
+      if (sum == nullptr) 
+        sum = std::make_shared<Statistics>(*stats);
+      else {
+        auto tmp = std::make_shared<Statistics>(*stats);
+        tmp->ScaleStatistics(1, div);
+        sum->MergeStatistics(tmp);
+      }
+      //iter->Current().GetRanges(results, range);
+    }
+    return sum;
   }
 };
 
