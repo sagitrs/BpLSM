@@ -118,7 +118,10 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
     for (size_t i = 0; i < size(); ++i)
       snapshot.emplace_back(
         "A["+std::to_string(i)+"]", 
-        std::to_string(operator[](i)->Identifier()));
+        std::to_string(operator[](i)->Identifier())
+         + "|" + 
+        std::to_string(operator[](i)->GetStatistics(GetCount, STATISTICS_ALL))
+      );
   }
  private:
   const std::__wrap_iter<const std::shared_ptr<sagitrs::BoundedValue> *> Locate(uint64_t id) const {
