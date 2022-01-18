@@ -44,9 +44,13 @@ struct Coordinates {
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
   void GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
     auto& buffer = node_->level_[height_]->buffer_;
+    auto now = node_->options_->NowTimeSlice();
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
       if (key == nullptr || (*i)->Compare(*key) == BOverlap) {
         results.Add(*i);
+        (*i)->UpdateStatistics(ValueGetCount, 1, now);
+        SetStatisticsDirty();
+        buffer.SetStatsDirty();
       }
     }
   }
@@ -269,8 +273,9 @@ struct SBSIterator : public Printable {
   // Get all the values on the path that are overlap with the given range.
   void GetBufferOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range) {
     auto iter = s_.NewIterator();
-    for (iter->SeekToLast(); iter->Valid(); iter->Prev())
+    for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
       iter->Current().GetRanges(results, range);
+    }
   }
   void GetBufferInCurrent(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) { s_.Top().GetRanges(results, range); }
 
@@ -301,13 +306,13 @@ struct SBSIterator : public Printable {
     while (!reinsert_list.empty()) {
       auto e = reinsert_list.front();
       reinsert_list.pop_front();
-      bool ok = Del_(options, e, reinsert_list);
+      bool ok = Del_(options, e, reinsert_list, false);
       assert(ok);
       Add(options, e);
     }
     return 1;
   }
-  bool Del_(const SBSOptions& options, SBSNode::ValuePtr value, std::deque<SBSNode::ValuePtr>& reinsert) {
+  bool Del_(const SBSOptions& options, SBSNode::ValuePtr value, std::deque<SBSNode::ValuePtr>& reinsert, bool recycler_enabled = true) {
     // 1. Delete file in target node.
     // 2. (for inner node) check if split happens. if so, stop here.
     // 3. (for leaf node) check if node became empty. if so, check absorb recursively.
@@ -329,7 +334,8 @@ struct SBSIterator : public Printable {
     if (s_.Top().height_ == 0)
       res->UpdateStatistics(DefaultTypeLabel::LeafCount, -1, options.NowTimeSlice());         // statistics.
     SetRouteStatisticsDirty();
-    recycler_.push_back(res);
+    if (recycler_enabled)
+      recycler_.push_back(res);
 
     // for inner node:
     // check if recursively split is triggered.
@@ -397,17 +403,23 @@ struct SBSIterator : public Printable {
     auto stats = iter->Current().Buffer().GetStatistics();
     if (stats)
       sum = std::make_shared<Statistics>(*stats);
-    
+    RealBounded bound = iter->Current().Buffer();
+
     for (iter->Prev(); iter->Valid(); iter->Prev()) {
       div *= iter->Current().Width();
-      auto stats = iter->Current().Buffer().GetStatistics();
-      if (stats == nullptr) continue;
-      if (sum == nullptr) 
-        sum = std::make_shared<Statistics>(*stats);
-      else {
-        auto tmp = std::make_shared<Statistics>(*stats);
-        tmp->ScaleStatistics(1, div);
-        sum->MergeStatistics(tmp);
+      //auto stats = iter->Current().Buffer().GetStatistics();
+      //if (stats == nullptr) continue;
+      for (auto value : iter->Current().Buffer()) 
+        if (bound.Compare(*value) == BOverlap) {
+          auto s1 = std::dynamic_pointer_cast<Statistable>(value);
+          auto stats = std::dynamic_pointer_cast<Statistics>(s1);
+          if (sum == nullptr) 
+            sum = std::make_shared<Statistics>(*stats);
+          else {
+            auto tmp = std::make_shared<Statistics>(*stats);
+            tmp->ScaleStatistics(DefaultCounterTypeMax, 1, div);
+            sum->MergeStatistics(tmp);
+          }
       }
       //iter->Current().GetRanges(results, range);
     }

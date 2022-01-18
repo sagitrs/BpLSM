@@ -55,6 +55,7 @@ struct Scorer {
   virtual double Calculate() = 0;
   size_t Height() const { return height_; }
   size_t Width() const { return node_->Width(height_); }
+  BoundedValueContainer& Buffer() const { return node_->level_[height_]->buffer_; }
   size_t BufferSize() const { return node_->level_[height_]->buffer_.size(); }
   const GlobalStatus& Global() const { return *status_; }
   std::shared_ptr<Statistable> GetStatistics() { return node_->GetTreeStatistics(height_); }

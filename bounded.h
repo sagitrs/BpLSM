@@ -42,7 +42,7 @@ struct Statistable {
   virtual TypeData GetStatistics(TypeLabel type, TypeTime time) = 0;
   virtual void MergeStatistics(std::shared_ptr<Statistable> target) = 0;  
   virtual void CopyStatistics(std::shared_ptr<Statistable> target) = 0;
-  virtual void ScaleStatistics(int numerator, int denominator) = 0;
+  virtual void ScaleStatistics(TypeLabel label, int numerator, int denominator) = 0;
   
   virtual ~Statistable() {}
 };

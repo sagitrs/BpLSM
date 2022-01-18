@@ -16,6 +16,13 @@ struct Counter : public std::array<int64_t, DefaultCounterTypeMax>, public Print
     for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
       std::array<int64_t, DefaultCounterTypeMax>::operator[](i) = 0;
   }
+  inline void Merge(const Counter& counter, uint32_t label) {
+    std::array<int64_t, DefaultCounterTypeMax>::operator[](label) += counter[label];
+  }
+  inline void Scale(uint32_t label, int n, int m) {
+    std::array<int64_t, DefaultCounterTypeMax>::operator[](label) *= n;
+    std::array<int64_t, DefaultCounterTypeMax>::operator[](label) /= m;
+  }
   Counter& operator+=(const Counter& counter) {
     for (size_t i = 0; i < DefaultCounterTypeMax; ++i)
       std::array<int64_t, DefaultCounterTypeMax>::operator[](i) += counter[i];
@@ -170,19 +177,25 @@ struct Statistics : virtual public Statistable, virtual public Printable {
     auto stats = std::dynamic_pointer_cast<Statistics>(target);
     MergeStatistics(*stats);
   }
-  virtual void ScaleStatistics(int numerator, int denominator) override {
-    for (auto t = queue_.st_time_; t <= queue_.ed_time_; ++t) {
-      queue_[t] *= numerator;
-      queue_[t] /= denominator;
+  virtual void ScaleStatistics(TypeLabel label, int numerator, int denominator) override {
+    if (label == DefaultCounterTypeMax) {
+      for (auto t = queue_.st_time_; t <= queue_.ed_time_; ++t) {
+        queue_[t] *= numerator;
+        queue_[t] /= denominator;
+      }
+      history_ *= numerator;
+      history_ /= denominator;
+    } else {
+      for (auto t = queue_.st_time_; t <= queue_.ed_time_; ++t)
+        queue_[t].Scale(label, numerator, denominator);
+      history_.Scale(label, numerator, denominator);
     }
-    history_ *= numerator;
-    history_ /= denominator;
   }
   virtual ~Statistics() {}
 
   virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
-    queue_.GetStringSnapshot(snapshot);
-    snapshot.emplace_back("History", "|");
+    //queue_.GetStringSnapshot(snapshot);
+    //snapshot.emplace_back("History", "|");
     history_.GetStringSnapshot(snapshot);
   }
  private:

@@ -120,7 +120,7 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
         "A["+std::to_string(i)+"]", 
         std::to_string(operator[](i)->Identifier())
          + "|" + 
-        std::to_string(operator[](i)->GetStatistics(GetCount, STATISTICS_ALL))
+        std::to_string(operator[](i)->GetStatistics(ValueGetCount, STATISTICS_ALL))
       );
   }
  private:

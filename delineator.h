@@ -30,7 +30,7 @@ struct Delineator {
 
     for (int64_t t = time - height; t <= time; ++t) {
       std::vector<int64_t> data;
-      GetAllStatistics(data, label, time);
+      GetAllStatistics(data, label, t);
       if (data.size() != 0) {
         int64_t lbound = data[0], rbound = data[0];
         for (const auto& a : data) {
@@ -40,7 +40,8 @@ struct Delineator {
         os << "|";
         for (size_t i = 0; i < n; ++i) if (mask[i])
           os << Graphical(data[i], lbound, rbound);
-      }
+        os << "(" << (rbound - lbound) << "/" <<  lbound << ")";
+      } 
       os << std::endl;
     }
     os << "+"; for (size_t i = 1; i < width; ++i) os << "-"; os << std::endl;

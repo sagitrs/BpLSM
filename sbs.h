@@ -10,10 +10,7 @@ struct Scorer;
 
 struct LeveledScorer : public Scorer {
  private:
-  size_t max_level0_size_ = 8;
-  size_t max_tiered_runs_ = 1;
   size_t base_children_ = 10;
-  bool level0_found_ = 0;
   const size_t allow_seek_ = (uint64_t)(2) * 1024 * 1024 / 16384U;
  public:
   LeveledScorer() {}
@@ -22,6 +19,7 @@ struct LeveledScorer : public Scorer {
   using Scorer::Update;
   using Scorer::MaxScore;
   using Scorer::GetScore;
+  using Scorer::Buffer;
  private: // override this function.
   virtual double Calculate() override { return CalculateByBufferSize(BufferSize()); }
  private:
@@ -29,22 +27,11 @@ struct LeveledScorer : public Scorer {
     double score = 0;
     if (Height() == 0) return 0;
     
-    double buffer_score = 0;
-    {
-      if (!level0_found_ && buffer_size > 0) {
-        level0_found_ = true;
-        buffer_score = 1.0 * buffer_size / (std::max(Width(), max_level0_size_) + 1);
-      } else {
-        buffer_score = 1.0 * buffer_size / (std::max(Width(), max_tiered_runs_) + 1); 
-      }
+    for (auto& value : Buffer()) {
+      double state = 1.0 * value->GetStatistics(ValueGetCount, STATISTICS_ALL) / allow_seek_;
+      score += state;
     }
-    double get_score = 0;
-    {
-
-    }
-
-    score = buffer_score;
-
+    
     //if (score > 1) score = 1;
     if (score < 0) score = 0;
 
@@ -77,16 +64,17 @@ struct SBSkiplist {
     iter_.Add(*options_, target);
     //iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
   }
-  void BufferClear() {
-    BoundedValueContainer container;
+  void BufferDel(BoundedValueContainer& container) {
     iter_.SeekToRoot();
     iter_.GetBuffered(container);
     for (auto range : container)
       iter_.Del(*options_, range);
-    for (auto range : container)
-      iter_.Add(*options_, range);
     assert(iter_.Recycler().size() == container.size());
     iter_.Recycler().clear();
+  }
+  void AddAll(const BoundedValueContainer& container) {
+    for (auto range : container)
+      iter_.Add(*options_, range);
   }
   size_t BufferSize() { 
     BoundedValueContainer container;
@@ -185,7 +173,7 @@ struct SBSkiplist {
     auto iter = std::make_shared<SBSIterator>(head_);
     for (iter->SeekToFirst(0); iter->Valid(); iter->Next())
       d.AddStatistics(iter->Current().node_->Guard(), iter->GetRouteMergedStatistics());
-    d.PrintTo(os, options_->NowTimeSlice(), GetCount);
+    d.PrintTo(os, options_->NowTimeSlice(), KSGetCount);
     os << "----------Print Statistics End----------" << std::endl;
   }
  public:
