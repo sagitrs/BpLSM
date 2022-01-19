@@ -107,7 +107,7 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
     for (auto t = queue.ed_time_; t >= queue.st_time_; --t) {
       if (t >= st_time_)
         (*this)[t] += queue[t];
-      else {
+      else if (!isFull()) {
         assert(t + 1 == st_time_);
         PushFront(t, queue[t]);
       }

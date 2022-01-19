@@ -45,14 +45,24 @@ struct Scorer {
     }
     return 0;
   }
-  double GetScore(std::shared_ptr<SBSNode> node, size_t height) {
+  virtual double GetScore(std::shared_ptr<SBSNode> node, size_t height) {
     SetNode(node, height);
     return Calculate();
   }
+  virtual double ValueScore(std::shared_ptr<BoundedValue> value) { return ValueCalculate(value) / Capacity(); }
   bool isUpdated() const { return is_updated_; }
+ 
+  virtual double ValueCalculate(std::shared_ptr<BoundedValue> value) { return 1; }
+  virtual double Capacity() { return Width(); }
+  virtual double Calculate() {
+    double score = 0;
+    for (auto value : Buffer())
+      score += ValueCalculate(value);
+    return score / Capacity();
+  }
+ // resources can be used.
  protected:
   void SetNode(std::shared_ptr<SBSNode> node, size_t height) { node_ = node; height_ = height; }
-  virtual double Calculate() = 0;
   size_t Height() const { return height_; }
   size_t Width() const { return node_->Width(height_); }
   BoundedValueContainer& Buffer() const { return node_->level_[height_]->buffer_; }

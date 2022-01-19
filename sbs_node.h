@@ -46,6 +46,7 @@ struct SBSNode : public Printable {
     is_head_(false), 
     pacesetter_(nullptr), 
     level_({std::make_shared<LevelNode>(std::dynamic_pointer_cast<StatisticsOptions>(options), next)}) {}
+  std::shared_ptr<BoundedValue> Pacesetter() const { return pacesetter_; }
   Slice Guard() const { 
     if (is_head_) return "";
     return pacesetter_->Min(); 
@@ -123,7 +124,11 @@ struct SBSNode : public Printable {
       }
       return 0;
     }
-    return options.TestState(Width(height), is_head_); 
+    size_t width = Width(height);
+    if (width > 50) {
+      std::cout << "Width ambigous = " << width << std::endl;
+    }
+    return options.TestState(width, is_head_); 
   }
   bool Fit(size_t height, const Bounded& range, bool no_overlap) const { 
     int cmp1 = range.Min().compare(Guard());

@@ -19,27 +19,10 @@ struct LeveledScorer : public Scorer {
   using Scorer::Update;
   using Scorer::MaxScore;
   using Scorer::GetScore;
-  using Scorer::Buffer;
+  using Scorer::ValueScore;
  private: // override this function.
-  virtual double Calculate() override { return CalculateByBufferSize(BufferSize()); }
- private:
-  virtual double CalculateByBufferSize(size_t buffer_size) {
-    double score = 0;
-    if (Height() == 0) return 0;
-    
-    for (auto& value : Buffer()) {
-      double state = 1.0 * value->GetStatistics(ValueGetCount, STATISTICS_ALL) / allow_seek_;
-      score += state;
-    }
-    
-    //if (score > 1) score = 1;
-    if (score < 0) score = 0;
-
-    return score;
-  }
-  bool CalculateIfFull(std::shared_ptr<SBSNode> node, size_t height) {
-    Scorer::SetNode(node, height);
-    return CalculateByBufferSize(BufferSize() + 1) >= 1.0;
+  virtual double ValueCalculate(std::shared_ptr<BoundedValue> value) override { 
+    return std::max(0.1, 1.0 * value->GetStatistics(ValueGetCount, STATISTICS_ALL) / allow_seek_); 
   }
 };
 
@@ -56,7 +39,7 @@ struct SBSkiplist {
   : options_(std::make_shared<SBSOptions>(options)),
     head_(std::make_shared<SBSNode>(options_, 6)),
     iter_(head_) {}
-
+  void Reinsert() { iter_.Reinsert(*options_); }
   void Put(TypeValuePtr value, bool buffered = false) {
     iter_.SeekToRoot();
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
@@ -105,28 +88,62 @@ struct SBSkiplist {
     target->UpdateStatistics(label, diff, options_->NowTimeSlice());
     iter_.SetRouteStatisticsDirty();
   }
-  bool Del(TypeValuePtr value) {
+  bool Del(TypeValuePtr value, bool auto_reinsert = true) {
     iter_.SeekToRoot();
     //auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    return iter_.Del(*options_, value);
+    return iter_.Del(*options_, value, auto_reinsert);
   }
-  void PickFilesByIterator(int& height, BoundedValueContainer* containers) {
+  void PickFilesByIterator(std::shared_ptr<Scorer> scorer, int& height, BoundedValueContainer* containers) {
     height = iter_.Current().height_;
     if (containers == nullptr)
       return;
+    
+    BoundedValueContainer& base_buffer = containers[0];
+    BoundedValueContainer& child_buffer = containers[1];
+    BoundedValueContainer& guards = containers[2];
 
     // get file in current.
-    iter_.GetBufferInCurrent(containers[0]);
-    if (height > 1)
-      iter_.GetChildGuardInCurrent(containers[2]);
-    
+    iter_.GetBufferInCurrent(base_buffer);    
+    int rest = options_->MaxCompactionFiles();
+    rest -= base_buffer.size();
+    //if (height > 1)
+    //  iter_.GetChildGuardInCurrent(containers[2]);
+    std::deque<Coordinates> queue;
     for (iter_.Dive(); 
-         iter_.Valid() && iter_.Current().node_->Guard().compare(containers[0].Max()) <= 0; 
+         iter_.Valid() && iter_.Current().node_->Guard().compare(base_buffer.Max()) <= 0; 
          iter_.Next()) {
-      iter_.GetBufferInCurrent(containers[1]);
-    } 
-    
-    
+      queue.push_back(Coordinates(iter_.Current()));
+    }
+
+    while (!queue.empty()) {
+      bool ok = iter_.SeekNode(queue.front());
+      assert(ok);
+      queue.pop_front();
+      
+      bool load = false;
+      if (iter_.Current().height_ == 0)
+        load = true;
+      else if (rest < iter_.Current().Buffer().size())
+        load = false;
+      else {
+        double score = scorer->GetScore(iter_.Current().node_, iter_.Current().height_); 
+        score += 1.0 / scorer->Capacity();
+        load = (score >= options_->NeedsCompactionScore());
+      }
+
+      if (!load) {
+        auto pacesetter = iter_.Current().node_->Pacesetter();
+        if (pacesetter) guards.push_back(pacesetter);
+      } else { 
+        iter_.GetBufferInCurrent(child_buffer); 
+        rest -= iter_.Current().Buffer().size();
+        if (iter_.Current().height_ > 0) {
+          auto ed = iter_.Current().NextNode().DownNode();
+          for (iter_.Dive(); !(iter_.Current() == ed); iter_.Next())
+            queue.push_back(Coordinates(iter_.Current()));
+        }
+      }
+    }
   }
   double PickFilesByScore(std::shared_ptr<Scorer> scorer, double baseline,
                           int& height, BoundedValueContainer* containers = nullptr) {
@@ -134,7 +151,7 @@ struct SBSkiplist {
     double max_score = iter_.SeekScore(scorer, baseline, true);
     height = iter_.Current().height_;
     if (containers)
-      PickFilesByIterator(height, containers);
+      PickFilesByIterator(scorer, height, containers);
     return max_score;
   }
   bool HasScore(std::shared_ptr<Scorer> scorer, double baseline) {
@@ -200,7 +217,7 @@ struct SBSkiplist {
 
   }
   std::shared_ptr<SBSNode> GetHead() const { return head_; }
-  BoundedValueContainer& Recycler() { return iter_.Recycler(); }
+  std::vector<SBSNode::ValuePtr>& Recycler() { return iter_.Recycler(); }
 };
 
 }

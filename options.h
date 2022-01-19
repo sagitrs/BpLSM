@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <stack>
+#include <iostream>
 #include "leveldb/env.h"
 
 namespace sagitrs {
@@ -41,6 +42,7 @@ struct SBSNodeOptions {
   virtual size_t DefaultWidth() const = 0;
 
   virtual double NeedsCompactionScore() const = 0;
+  virtual size_t MaxCompactionFiles() const = 0;
 
   // Used to detect if a width is below or above the boundary value.
   // Exceptionally, the left border of the head node is not checked.
@@ -117,7 +119,9 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   virtual double kDifferentiationWeight() const override { return D; }
 
   double needs_compaction_score_ = 0.8;
+  size_t max_compaction_files_ = 20;
   virtual double NeedsCompactionScore() const override { return needs_compaction_score_; }
+  virtual size_t MaxCompactionFiles() const override { return max_compaction_files_; }
 
  public:
   SBSOptions() = default;

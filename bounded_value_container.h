@@ -124,7 +124,7 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
       );
   }
  private:
-  const std::__wrap_iter<const std::shared_ptr<sagitrs::BoundedValue> *> Locate(uint64_t id) const {
+  const BoundedValueContainerBaseType::const_iterator Locate(uint64_t id) const {
     for (auto iter = begin(); iter != end(); ++iter) 
     if ((*iter)->Identifier() == id) 
       return iter;

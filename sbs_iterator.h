@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stack>
+#include <unordered_set>
 #include "sbs_node.h"
 #include "scorer.h"
 namespace sagitrs {
@@ -127,7 +128,8 @@ struct SBSIterator : public Printable {
  private:
   CoordinatesStack s_;
   SBSNode::SBSP head_;
-  BoundedValueContainer recycler_;
+  std::vector<SBSNode::ValuePtr> recycler_, reinserter_;
+  //std::deque<SBSNode::ValuePtr> reinserter_;
   //-------------------------------------------------------------
   size_t SBSHeight() const { return head_->Height(); }
   //----------------------iterator operation---------------------
@@ -164,15 +166,18 @@ struct SBSIterator : public Printable {
     Dive(SBSHeight() - 1 - level);
   }
   // ---------------------iterator operation end-----------------
- private:
+ public:
   bool SeekNode(Coordinates target) {
     RealBounded bound(target.node_->Guard(), target.node_->Guard());
     SeekRange(bound, false);
     auto iter = s_.NewIterator();
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-      if (iter->Current() == target) 
+    for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+      if (iter->Current() == target) {
+        s_.SetToIterator(*iter);
         return 1;
+      }
     }
+    SeekToRoot();
     return 0;
   }
   public:
@@ -238,8 +243,9 @@ struct SBSIterator : public Printable {
     bool update = false;
     for (iter->SeekToLast(); iter->Valid() && iter->Current().TestState(options) > 0; iter->Prev()) {
       // Dirty node can not split.
-      if (iter->Current().height_ > 0 && iter->Current().IsDirty()) 
+      if (iter->Current().height_ > 0 && iter->Current().IsDirty()) {
         break;
+      }
       update = true;
       do {
         iter->Current().SplitNext(options);
@@ -267,7 +273,7 @@ struct SBSIterator : public Printable {
   }
   void AddBuffered(const SBSOptions& options, SBSNode::ValuePtr range) { s_.Bottom().Add(options, range); }
   void GetBuffered(BoundedValueContainer& results) { s_.Bottom().GetRanges(results); }
-  BoundedValueContainer& Recycler() { return recycler_; }
+  std::vector<SBSNode::ValuePtr>& Recycler() { return recycler_; }
  private:
  public:
   // Get all the values on the path that are overlap with the given range.
@@ -298,21 +304,24 @@ struct SBSIterator : public Printable {
   // Assume: The current node contains the target value.
   // Delete a value within the current node which is the same as the given value.
   // This may recursively trigger a merge operation and possibly a split operation.
-  bool Del(const SBSOptions& options, SBSNode::ValuePtr range) {
-    std::deque<SBSNode::ValuePtr> reinsert_list;
-    bool ok = Del_(options, range, reinsert_list);
-    if (!ok) return 0;
-    //s.push(range);
-    while (!reinsert_list.empty()) {
-      auto e = reinsert_list.front();
-      reinsert_list.pop_front();
-      bool ok = Del_(options, e, reinsert_list, false);
-      assert(ok);
-      Add(options, e);
+  void Reinsert(const SBSOptions& options) {
+    //assert(reinserter_.empty());
+    for (auto e : reinserter_) {
+      bool ok = Del_(options, e, false);
+      if (ok)
+        Add(options, e);
     }
+    reinserter_.clear();
+  }
+  bool Del(const SBSOptions& options, SBSNode::ValuePtr range, bool auto_reinsert = true) {
+    bool ok = Del_(options, range);
+    if (!ok) 
+      return 0;
+    if (auto_reinsert) 
+      Reinsert(options);
     return 1;
   }
-  bool Del_(const SBSOptions& options, SBSNode::ValuePtr value, std::deque<SBSNode::ValuePtr>& reinsert, bool recycler_enabled = true) {
+  bool Del_(const SBSOptions& options, SBSNode::ValuePtr value, bool recycle = true) {
     // 1. Delete file in target node.
     // 2. (for inner node) check if split happens. if so, stop here.
     // 3. (for leaf node) check if node became empty. if so, check absorb recursively.
@@ -324,7 +333,8 @@ struct SBSIterator : public Printable {
     SeekToRoot();
     SeekRange(*value);
     auto res0 = SeekValueInRoute(value->Identifier());
-    if (res0 == nullptr) return 0;
+    if (res0 == nullptr) 
+      return 0;
     //if (s_.Top().height_ == 0) s_.Top().->UpdateStatistics(DefaultTypeLabel::LeafCount, 1, options.NowTimeSlice());           // inc leaf.
     //SetRouteStatisticsDirty();
 
@@ -334,8 +344,7 @@ struct SBSIterator : public Printable {
     if (s_.Top().height_ == 0)
       res->UpdateStatistics(DefaultTypeLabel::LeafCount, -1, options.NowTimeSlice());         // statistics.
     SetRouteStatisticsDirty();
-    if (recycler_enabled)
-      recycler_.push_back(res);
+    if (recycle) recycler_.push_back(res);
 
     // for inner node:
     // check if recursively split is triggered.
@@ -379,7 +388,7 @@ struct SBSIterator : public Printable {
       for (auto element : s_.Top().Buffer()) {
         for (auto i = st; i.Valid() && !(i == ed); i.JumpNext()) {
           if (i.Fit(*element, height == 0)) {
-            reinsert.push_back(element);
+            reinserter_.push_back(element);
             break;
           }
         }
