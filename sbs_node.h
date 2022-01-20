@@ -126,7 +126,7 @@ struct SBSNode : public Printable {
     }
     size_t width = Width(height);
     if (width > 50) {
-      std::cout << "Width ambigous = " << width << std::endl;
+      std::cout << "Warning : Width ambigous = " << width << std::endl;
     }
     return options.TestState(width, is_head_); 
   }
@@ -175,7 +175,7 @@ struct SBSNode : public Printable {
   }
  private:
  public:
-  void SplitNext(const SBSOptions& options, size_t height) {
+  bool SplitNext(const SBSOptions& options, size_t height) {
     if (height == 0) {
       auto &a = level_[0]->buffer_;
       assert(a.size() == 2);
@@ -183,23 +183,47 @@ struct SBSNode : public Printable {
       tmp->Add(options, 0, *a.rbegin());
       SetNext(0, tmp);
       Del(0, *a.rbegin());
+      return 1;
     } else {
-      assert(!level_[height]->isDirty());
+      //assert(!level_[height]->isDirty());
       size_t width = Width(height);
       assert(options.TestState(width, is_head_) > 0);
       size_t reserve = width - options.DefaultWidth();
       assert(reserve > 1);
       SBSP next = Next(height);
       SBSP middle = Next(height - 1, reserve);
-        auto tmp = std::make_shared<LevelNode>(options_, next);
-        middle->level_.push_back(tmp); 
-        SetNext(height, middle);
+      auto tmp = std::make_shared<LevelNode>(options_, next);
+      {
+        // Check dirty problem.
+        RealBounded div(middle->Guard(), middle->Guard());
+        for (auto& v : level_[height]->buffer_) {
+          BCP cmp = v->Compare(div);
+          if (cmp == BLess) {
+            // reserve in current node.
+          } else if (cmp == BGreater) {
+            // move to next node. 
+            tmp->Add(v);
+            //level_[height]->Del(v);
+          } else {
+            // dirty.
+            assert(cmp == BOverlap);
+            assert(v->Min().compare(middle->Guard()) <= 0 
+                && middle->Guard().compare(v->Max()) <= 0);
+            return 0;
+          }
+        }
+        for (auto& v : tmp->buffer_)
+          level_[height]->Del(v);
+      }
+      middle->level_.push_back(tmp); 
+      SetNext(height, middle);
       // if this node is root node, increase height.
       if (is_head_ && height + 1 == Height()) {
         assert(false && "Error : try to increase tree height.");
         assert(next == nullptr);
         //IncHeight(level_[height]->node_stats_, nullptr);
       }
+      return 1;
     }
   }
   void AbsorbNext(const SBSOptions& options, size_t height) {

@@ -40,30 +40,15 @@ struct SBSkiplist {
     head_(std::make_shared<SBSNode>(options_, 6)),
     iter_(head_) {}
   void Reinsert() { iter_.Reinsert(*options_); }
-  void Put(TypeValuePtr value, bool buffered = false) {
+  void Put(TypeValuePtr value) {
     iter_.SeekToRoot();
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    if (buffered) { iter_.AddBuffered(*options_, target); return; }
     iter_.Add(*options_, target);
     //iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
-  }
-  void BufferDel(BoundedValueContainer& container) {
-    iter_.SeekToRoot();
-    iter_.GetBuffered(container);
-    for (auto range : container)
-      iter_.Del(*options_, range);
-    assert(iter_.Recycler().size() == container.size());
-    iter_.Recycler().clear();
   }
   void AddAll(const BoundedValueContainer& container) {
     for (auto range : container)
       iter_.Add(*options_, range);
-  }
-  size_t BufferSize() { 
-    BoundedValueContainer container;
-    iter_.SeekToRoot();
-    iter_.GetBuffered(container);
-    return container.size();
   }
   int SeekHeight(const Bounded& range) {
     iter_.SeekToRoot();
@@ -106,7 +91,9 @@ struct SBSkiplist {
     iter_.GetBufferInCurrent(base_buffer);    
     int rest = options_->MaxCompactionFiles();
     rest -= base_buffer.size();
-    //if (height > 1)
+
+    bool skip_first_level = iter_.Current().Width() < options_->MinWidth();
+        //if (height > 1)
     //  iter_.GetChildGuardInCurrent(containers[2]);
     std::deque<Coordinates> queue;
     for (iter_.Dive(); 
@@ -122,6 +109,8 @@ struct SBSkiplist {
       
       bool load = false;
       if (iter_.Current().height_ == 0)
+        load = true;
+      else if (iter_.Current().height_ + 1 == height && skip_first_level)
         load = true;
       else if (rest < iter_.Current().Buffer().size())
         load = false;

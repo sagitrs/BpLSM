@@ -28,7 +28,7 @@ struct Coordinates {
   SBSNode::ValuePtr Del(SBSNode::ValuePtr range) const { return node_->Del(height_, range); }
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) const { node_->Add(options, height_, range); }
   bool Contains(SBSNode::ValuePtr value) const { return node_->level_[height_]->Contains(value); }
-  void SplitNext(const SBSOptions& options) { node_->SplitNext(options, height_); }
+  bool SplitNext(const SBSOptions& options) { return node_->SplitNext(options, height_); }
   void AbsorbNext(const SBSOptions& options) { node_->AbsorbNext(options, height_); }
   void GetBufferWithChildGuard(BoundedValueContainer* results, BoundedValueContainer* guards) {
     if (results)
@@ -242,14 +242,11 @@ struct SBSIterator : public Printable {
     auto iter = s_.NewIterator();
     bool update = false;
     for (iter->SeekToLast(); iter->Valid() && iter->Current().TestState(options) > 0; iter->Prev()) {
-      // Dirty node can not split.
-      if (iter->Current().height_ > 0 && iter->Current().IsDirty()) {
-        break;
+      while (iter->Current().TestState(options) > 0) {
+        bool ok = iter->Current().SplitNext(options);
+        // node is dirty.
+        if (!ok) return; 
       }
-      update = true;
-      do {
-        iter->Current().SplitNext(options);
-      } while (iter->Current().TestState(options) > 0);
     }
   }
  public:
@@ -271,8 +268,6 @@ struct SBSIterator : public Printable {
     //SetRouteStatisticsDirty();
     CheckSplit(options);
   }
-  void AddBuffered(const SBSOptions& options, SBSNode::ValuePtr range) { s_.Bottom().Add(options, range); }
-  void GetBuffered(BoundedValueContainer& results) { s_.Bottom().GetRanges(results); }
   std::vector<SBSNode::ValuePtr>& Recycler() { return recycler_; }
  private:
  public:

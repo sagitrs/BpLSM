@@ -95,7 +95,7 @@ struct StatisticsOptions {
 struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 // Width limit of nodes:
  private:
-  size_t width_[3] = {3, 5, 10};
+  size_t width_[3] = {7, 7, 14};
  public:
   size_t MinWidth() const override { return width_[0]; }
   size_t DefaultWidth() const override { return width_[1]; }
