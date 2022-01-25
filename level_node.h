@@ -13,11 +13,14 @@ struct SBSNode;
 typedef BoundedValueContainer TypeBuffer;
 
 struct LevelNode : public Printable {
+  // next node of this level.
   std::shared_ptr<SBSNode> next_;
+  // files that stored in this level.
   TypeBuffer buffer_;
-
+  // statistics info.
   bool statistics_dirty_;
   std::shared_ptr<Statistics> tree_stats_;
+  // temp variables.
 
   // Build blank node.
   LevelNode(std::shared_ptr<StatisticsOptions> stat_options, std::shared_ptr<SBSNode> next) 
