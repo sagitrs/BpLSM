@@ -60,6 +60,7 @@ struct SBSNode : public Printable {
     }
     return next;
   }
+  std::shared_ptr<LevelNode> LevelAt(size_t height) const { return level_[height]; }
  private:
   void SetNext(size_t k, SBSP next) { level_[k]->next_ = next; }
   size_t Width(size_t height) const {
@@ -156,21 +157,47 @@ struct SBSNode : public Printable {
   }
   void DecHeight() { level_.pop_back(); }
   std::shared_ptr<Statistable> GetNodeStatistics(size_t height) { return level_[height]->buffer_.GetStatistics(); }
+  std::shared_ptr<BoundedValue> GetHottest(size_t height, size_t time) {
+    if (height == 0) {
+      if (level_[0]->buffer_.empty())
+        return nullptr; 
+      assert(level_[0]->buffer_.size() == 1); 
+      return level_[0]->buffer_[0]; 
+    } 
+    auto &h = level_[height]->table_.hottest_;
+    auto &t = level_[height]->table_.update_time_;
+    if (h != nullptr && t == time)
+      return h;
+    h = GetHottest(height - 1, time);
+    t = time;
+    int64_t ri = (h == nullptr ? 0 : h->GetStatistics(KSGetCount, time));
+    for (SBSP i = Next(height - 1); i != Next(height); i = i->Next(height - 1)) {
+      auto tmp = i->GetHottest(height - 1, time);
+      if (tmp == nullptr) continue;
+      auto tmp_ri = tmp->GetStatistics(KSGetCount, time);
+      if (h == nullptr || tmp_ri > ri) {
+        h = tmp;
+        ri = tmp_ri;
+      }
+    }
+    return h;
+  }
   std::shared_ptr<Statistable> GetTreeStatistics(size_t height) {
-    //if (height == 0) 
-    //  return level_[0]->buffer_.empty() ? nullptr : level_[0]->buffer_[0];
-    auto s = level_[height]->tree_stats_;
-    if (!level_[height]->isStatisticsDirty())
+    auto s = level_[height]->table_.TreeStatistics();
+    if (!level_[height]->table_.isDirty())
       return s;
-    //assert(height > 0);
-    if (height > 0) {
-      s->CopyStatistics(GetTreeStatistics(height - 1));
-      for (SBSP i = Next(height - 1); i != Next(height); i = i->Next(height - 1))
-        s->MergeStatistics(i->GetTreeStatistics(height - 1));
-    } else
-      s->CopyStatistics(nullptr);
-    s->MergeStatistics(GetNodeStatistics(height));
-    level_[height]->statistics_dirty_ = false;
+    {
+      if (height > 0) {
+        s->CopyStatistics(GetTreeStatistics(height - 1));
+        for (SBSP i = Next(height - 1); i != Next(height); i = i->Next(height - 1))
+          s->MergeStatistics(i->GetTreeStatistics(height - 1));
+      } else {
+        s->CopyStatistics(nullptr);
+      }
+      s->MergeStatistics(GetNodeStatistics(height));
+    }
+    
+    level_[height]->table_.SetDirty(false);
     return s;
   }
  private:
@@ -180,9 +207,10 @@ struct SBSNode : public Printable {
       auto &a = level_[0]->buffer_;
       assert(a.size() == 2);
       auto tmp = std::make_shared<SBSNode>(options_, Next(0));
-      tmp->Add(options, 0, *a.rbegin());
+      auto v = *a.rbegin();
+      tmp->Add(options, 0, v);
       SetNext(0, tmp);
-      Del(0, *a.rbegin());
+      Del(0, v);
       return 1;
     } else {
       //assert(!level_[height]->isDirty());

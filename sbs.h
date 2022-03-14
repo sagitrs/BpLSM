@@ -25,6 +25,35 @@ struct LeveledScorer : public Scorer {
     return std::max(0.1, 1.0 * value->GetStatistics(ValueGetCount, STATISTICS_ALL) / allow_seek_); 
   }
 };
+struct BVersionScorer : public Scorer {
+ private:
+  size_t base_children_ = 10;
+  const size_t allow_seek_ = (uint64_t)(2) * 1024 * 1024 / 16384U;
+ public:
+  BVersionScorer() {}
+  using Scorer::Init;
+  using Scorer::Reset;
+  using Scorer::Update;
+  using Scorer::MaxScore;
+  using Scorer::GetScore;
+  using Scorer::ValueScore;
+ private: // override this function.
+  virtual double ValueCalculate(std::shared_ptr<BoundedValue> value) override { return 1; }
+  virtual size_t Capacity() override { 
+    size_t width = Width();
+
+    size_t E0 = Options()->MaxWriteBufferSize();
+    size_t B = Options()->MaxFileSize();
+    int64_t Write = 10000; // how to get?
+
+    auto hottest = GetHottest(Global().time_);
+    int64_t ri = (hottest == nullptr ? 1 : hottest->GetStatistics(KSGetCount, Global().time_));
+    
+    double kp = 1.0 * B * width * Write / 2 / E0 / ri; 
+
+    return width;
+  }
+};
 
 struct SBSkiplist {
   friend struct Scorer;
@@ -35,11 +64,12 @@ struct SBSkiplist {
   std::shared_ptr<TypeNode> head_;
   SBSIterator iter_;
  public:
-  SBSkiplist(const SBSOptions& options) 
-  : options_(std::make_shared<SBSOptions>(options)),
+  SBSkiplist(std::shared_ptr<SBSOptions> options) 
+  : options_(options),
     head_(std::make_shared<SBSNode>(options_, 6)),
     iter_(head_) {}
   void Reinsert() { iter_.Reinsert(*options_); }
+  std::shared_ptr<SBSIterator> NewIterator() const { return std::make_shared<SBSIterator>(head_); }
   void Put(TypeValuePtr value) {
     iter_.SeekToRoot();
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
@@ -70,8 +100,10 @@ struct SBSkiplist {
       // file is deleted when bversion is unlocked.
       return;
     }
-    target->UpdateStatistics(label, diff, options_->NowTimeSlice());
+    Statistics::TypeTime now = options_->NowTimeSlice();
+    target->UpdateStatistics(label, diff, now);
     iter_.SetRouteStatisticsDirty();
+    //iter_.UpdateRouteHottest(target);
   }
   bool Del(TypeValuePtr value, bool auto_reinsert = true) {
     iter_.SeekToRoot();
@@ -107,12 +139,17 @@ struct SBSkiplist {
       assert(ok);
       queue.pop_front();
       
+      size_t h = iter_.Current().height_;
+      size_t files = h == 0 ? 0 : iter_.Current().Buffer().size();
+      if (h == 1) 
+        files += iter_.Current().Width();
+
       bool load = false;
-      if (iter_.Current().height_ == 0)
+      if (h == 0)
         load = true;
-      else if (iter_.Current().height_ + 1 == height && skip_first_level)
+      else if (h + 1 == height && skip_first_level)
         load = true;
-      else if (rest < iter_.Current().Buffer().size())
+      else if (rest < files)
         load = false;
       else {
         double score = scorer->GetScore(iter_.Current().node_, iter_.Current().height_); 
@@ -125,7 +162,8 @@ struct SBSkiplist {
         if (pacesetter) guards.push_back(pacesetter);
       } else { 
         iter_.GetBufferInCurrent(child_buffer); 
-        rest -= iter_.Current().Buffer().size();
+        rest -= files;
+
         if (iter_.Current().height_ > 0) {
           auto ed = iter_.Current().NextNode().DownNode();
           for (iter_.Dive(); !(iter_.Current() == ed); iter_.Next())
@@ -157,7 +195,7 @@ struct SBSkiplist {
     os << "----------Print Detailed End----------" << std::endl;  
   }
   void PrintSimple(std::ostream& os) const {
-    auto iter = std::make_shared<SBSIterator>(head_);
+    auto iter = NewIterator();
     std::vector<size_t> hs;
     size_t maxh = 0;
     os << "----------Print Simple Begin----------" << std::endl;
@@ -176,7 +214,7 @@ struct SBSkiplist {
   void PrintStatistics(std::ostream& os) const {
     os << "----------Print Statistics Begin----------" << std::endl;
     Delineator d;
-    auto iter = std::make_shared<SBSIterator>(head_);
+    auto iter = NewIterator();
     for (iter->SeekToFirst(0); iter->Valid(); iter->Next())
       d.AddStatistics(iter->Current().node_->Guard(), iter->GetRouteMergedStatistics());
     d.PrintTo(os, options_->NowTimeSlice(), KSGetCount);

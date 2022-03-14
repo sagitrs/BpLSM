@@ -10,10 +10,12 @@ struct Scorer {
   struct GlobalStatus {
     size_t head_height_;
     std::shared_ptr<Statistable> global_stats_;
+    Statistics::TypeTime time_;
     GlobalStatus(std::shared_ptr<SBSNode> head) {
       assert(head->is_head_);
       head_height_ = head->Height();
       global_stats_ = head->GetTreeStatistics(head_height_ - 1);
+      time_ = head->options_->NowTimeSlice();
     }
   };
   std::shared_ptr<GlobalStatus> status_;
@@ -53,7 +55,7 @@ struct Scorer {
   bool isUpdated() const { return is_updated_; }
  
   virtual double ValueCalculate(std::shared_ptr<BoundedValue> value) { return 1; }
-  virtual double Capacity() { return Width(); }
+  virtual size_t Capacity() { return Width(); }
   virtual double Calculate() {
     double score = 0;
     for (auto value : Buffer())
@@ -69,6 +71,8 @@ struct Scorer {
   size_t BufferSize() const { return node_->level_[height_]->buffer_.size(); }
   const GlobalStatus& Global() const { return *status_; }
   std::shared_ptr<Statistable> GetStatistics() { return node_->GetTreeStatistics(height_); }
+  std::shared_ptr<BoundedValue> GetHottest(int64_t time) { return node_->GetHottest(height_, time); }
+  std::shared_ptr<SBSOptions> Options() { return node_->options_; }
 };
 
 }

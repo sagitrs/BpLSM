@@ -40,7 +40,7 @@ struct Coordinates {
   }
   std::shared_ptr<Statistable> GetTreeStatistics() { return node_->GetTreeStatistics(height_); }
   std::shared_ptr<Statistable> GetNodeStatistics() { return node_->GetNodeStatistics(height_); }
-  void SetStatisticsDirty() { node_->level_[height_]->statistics_dirty_ = true; }
+  void SetStatisticsDirty() { node_->level_[height_]->table_.SetDirty(); }
   //bool operator ==(const Coordinates& b) { return node_ == b.node_; }
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
   void GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
@@ -63,7 +63,8 @@ struct Coordinates {
     return nullptr;
   }
   BoundedValueContainer& Buffer() { return node_->level_[height_]->buffer_; }
-
+  std::shared_ptr<BoundedValue> GetHottest(int64_t time) { return node_->GetHottest(height_, time); }
+  LevelNode::VariableTable& Table() { return node_->level_[height_]->table_; }
   std::string ToString() const {
     std::string node = node_->Guard().ToString();
     std::string height = std::to_string(height_);
@@ -85,7 +86,7 @@ struct CoordinatesStack : private std::vector<Coordinates> {
   const Coordinates& Top() const { return *rbegin(); }
   const Coordinates& Bottom() const { return *begin(); }
   Coordinates& operator[](size_t k) { return std::vector<Coordinates>::operator[](k); }
-  const Coordinates& operator[](size_t k) const { return (*this)[k]; }
+  const Coordinates& operator[](size_t k) const { return std::vector<Coordinates>::operator[](k); }
   Coordinates& reverse_at(size_t k) { return (*this)[size() - 1 - k]; }
 
   void Push(const Coordinates& coor) { push_back(coor); }
@@ -130,8 +131,10 @@ struct SBSIterator : public Printable {
   SBSNode::SBSP head_;
   std::vector<SBSNode::ValuePtr> recycler_, reinserter_;
   //std::deque<SBSNode::ValuePtr> reinserter_;
+ public:
   //-------------------------------------------------------------
   size_t SBSHeight() const { return head_->Height(); }
+  const CoordinatesStack& Stack() const { return s_; }
   //----------------------iterator operation---------------------
  public:
   bool Valid() const { return s_.Top().Valid(); }
@@ -152,7 +155,7 @@ struct SBSIterator : public Printable {
         s_.reverse_at(h) = Coordinates(curr.node_, h);
     }
   }
-  virtual void Prev() = delete;
+  virtual void Prev() { assert(false); }
   void Dive(size_t recursive = 1) {
     auto curr = s_.Top();
     assert(curr.height_ > 0);
@@ -164,6 +167,10 @@ struct SBSIterator : public Printable {
     SeekToRoot();
     assert(level <= SBSHeight() - 1);
     Dive(SBSHeight() - 1 - level);
+  }
+  void SeekToLast(int level) {
+    assert(false);
+    
   }
   // ---------------------iterator operation end-----------------
  public:
@@ -250,6 +257,46 @@ struct SBSIterator : public Printable {
     }
   }
  public:
+  void DisableRouteHottest() {
+    assert(Current().height_ == 0);
+    auto iter = s_.NewIterator();
+    iter->SeekToLast();
+    auto target = iter->Current().Buffer()[0];
+    for (iter->Prev(); iter->Valid(); iter->Prev()) {
+      auto &h = iter->Current().Table().hottest_;
+      auto &t = iter->Current().Table().update_time_;
+      if (h != nullptr && h->Identifier() == target->Identifier())
+        h = nullptr;
+      else
+        break;
+    }
+  }
+  void UpdateRouteHottest(std::shared_ptr<BoundedValue> target) {
+    if (Current().height_ > 0) {
+      // nothing to be updated.
+      return;
+    }
+    auto iter = s_.NewIterator();
+
+    for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+      auto &h = iter->Current().Table().hottest_;
+      auto &t = iter->Current().Table().update_time_;
+      if (iter->Current().height_ == 0) {
+        assert(iter->Current().Buffer().size() == 1 && iter->Current().Buffer()[0] == target);
+        h = target;
+      } else {
+        if (h == nullptr) {
+          
+          auto tmp = iter->Current().GetHottest(t);
+          assert(tmp == h);
+        }
+        if (h->GetStatistics(KSGetCount, t) < target->GetStatistics(KSGetCount, t)) 
+          h = target;
+        else
+          return;
+      }
+    }
+  }
   void SetRouteStatisticsDirty() {
     auto iter = s_.NewIterator();
     iter->SeekToLast();
@@ -336,8 +383,10 @@ struct SBSIterator : public Printable {
     auto target = s_.Top();
     auto res = target.Del(value);
     assert(res != nullptr);
-    if (s_.Top().height_ == 0)
+    if (s_.Top().height_ == 0) {
       res->UpdateStatistics(DefaultTypeLabel::LeafCount, -1, options.NowTimeSlice());         // statistics.
+      DisableRouteHottest();
+    }
     SetRouteStatisticsDirty();
     if (recycle) recycler_.push_back(res);
 

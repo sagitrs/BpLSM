@@ -3,6 +3,7 @@
 #include "bounded.h"
 #include <memory>
 #include <set>
+#include "statistics.h"
 
 namespace sagitrs {
 
@@ -30,10 +31,7 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
     }
     return stats_;
   }
-
-
-
-
+  //-----------------------------------------------------------------
   BoundedValueContainer() :   // Copy function.
     BoundedValueContainerBaseType(),
     RealBounded("Undefined", "Undefined") {}

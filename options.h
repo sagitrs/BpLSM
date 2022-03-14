@@ -28,7 +28,10 @@ enum DefaultTypeLabel : uint32_t {
   IterateCount,
   // to record iterate operation of this value.
   // clear at Compaction.
-  DefaultCounterTypeMax
+  PutCount,
+  // for special usage.
+  // recording total put operations globally.
+  DefaultCounterTypeMax,
 };
 
 struct SBSNodeOptions {
@@ -95,11 +98,12 @@ struct StatisticsOptions {
 struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 // Width limit of nodes:
  private:
-  size_t width_[3] = {7, 7, 14};
+  static const size_t BaseWidth = 11;
+  size_t width_[3] = {BaseWidth * 2 / 3, BaseWidth * 4 / 3};
  public:
   size_t MinWidth() const override { return width_[0]; }
-  size_t DefaultWidth() const override { return width_[1]; }
-  size_t MaxWidth() const override { return width_[2]; }
+  size_t DefaultWidth() const override { return width_[0]; }
+  size_t MaxWidth() const override { return width_[1]; }
 
 // Statistics args: 
  private:
@@ -119,9 +123,15 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   virtual double kDifferentiationWeight() const override { return D; }
 
   double needs_compaction_score_ = 0.8;
-  size_t max_compaction_files_ = 20;
+  size_t max_compaction_files_ = 15;
   virtual double NeedsCompactionScore() const override { return needs_compaction_score_; }
   virtual size_t MaxCompactionFiles() const override { return max_compaction_files_; }
+
+ public:
+  //size_t max_file_size_ = 2 * 1024 * 1024;
+  size_t MaxWriteBufferSize() const { return 64 * 1024 * 1024; }
+  size_t MaxFileSize() const { return 2 * 1024 * 1024; }
+  size_t Width() const { return BaseWidth; }
 
  public:
   SBSOptions() = default;
