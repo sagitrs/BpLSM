@@ -203,7 +203,8 @@ struct Statistics : virtual public Statistable, virtual public Printable {
     if (!target.options_) return;
     if (target.queue_.ed_time_ > queue_.ed_time_)
       UpdateTime(target.queue_.ed_time_);
-    queue_.Merge(target.queue_);
+    if (target.queue_.ed_time_ + options_->TimeSliceMaximumSize() > queue_.ed_time_)
+      queue_.Merge(target.queue_);
     history_ += target.history_;
   }
  };
