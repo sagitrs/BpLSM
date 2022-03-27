@@ -202,7 +202,7 @@ struct SBSNode : public Printable {
   }
  private:
  public:
-  bool SplitNext(const SBSOptions& options, size_t height) {
+  bool SplitNext(const SBSOptions& options, size_t height, BoundedValueContainer* force = nullptr) {
     if (height == 0) {
       auto &a = level_[0]->buffer_;
       assert(a.size() == 2);
@@ -237,11 +237,16 @@ struct SBSNode : public Printable {
             assert(cmp == BOverlap);
             assert(v->Min().compare(middle->Guard()) <= 0 
                 && middle->Guard().compare(v->Max()) <= 0);
-            return 0;
+            if (!force)
+              return 0;
+            force->Add(v);
           }
         }
         for (auto& v : tmp->buffer_)
           level_[height]->Del(v);
+        if (force)
+          for (auto& v : *force)
+            level_[height]->Del(v);
       }
       middle->level_.push_back(tmp); 
       SetNext(height, middle);

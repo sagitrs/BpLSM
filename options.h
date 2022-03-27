@@ -124,7 +124,10 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 
   double needs_compaction_score_ = 0.8;
   size_t max_compaction_files_ = 15;
-  virtual double NeedsCompactionScore() const override { return needs_compaction_score_; }
+  bool force_compaction_ = 0;
+  virtual double NeedsCompactionScore() const override { 
+    return force_compaction_ ? 0 :needs_compaction_score_; 
+  }
   virtual size_t MaxCompactionFiles() const override { return max_compaction_files_; }
 
  public:

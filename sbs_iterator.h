@@ -28,7 +28,9 @@ struct Coordinates {
   SBSNode::ValuePtr Del(SBSNode::ValuePtr range) const { return node_->Del(height_, range); }
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) const { node_->Add(options, height_, range); }
   bool Contains(SBSNode::ValuePtr value) const { return node_->level_[height_]->Contains(value); }
-  bool SplitNext(const SBSOptions& options) { return node_->SplitNext(options, height_); }
+  bool SplitNext(const SBSOptions& options, BoundedValueContainer* force = nullptr) { 
+    return node_->SplitNext(options, height_, force); 
+  }
   void AbsorbNext(const SBSOptions& options) { node_->AbsorbNext(options, height_); }
   void GetBufferWithChildGuard(BoundedValueContainer* results, BoundedValueContainer* guards) {
     if (results)
@@ -223,6 +225,15 @@ struct SBSIterator : public Printable {
     }
     return nullptr;
   }
+  
+  void SeekDirty() {
+    for (int height = SBSHeight() - 1; height > 0; --height) {
+      SeekToRoot();
+      for (Dive(SBSHeight() - 1 - height); Valid(); Next()) 
+        if (Current().Buffer().size() >= 1)
+          return;
+    }
+  }
   // Add a value to the current node.
   // This may recursively trigger a split operation.
   // Assert: Already SeekRange().
@@ -245,16 +256,20 @@ struct SBSIterator : public Printable {
     return scorer->MaxScore();
   }
  private:
-  void CheckSplit(const SBSOptions& options) {
+  bool CheckSplit(const SBSOptions& options) {
     auto iter = s_.NewIterator();
     bool update = false;
     for (iter->SeekToLast(); iter->Valid() && iter->Current().TestState(options) > 0; iter->Prev()) {
       while (iter->Current().TestState(options) > 0) {
         bool ok = iter->Current().SplitNext(options);
         // node is dirty.
-        if (!ok) return; 
+        if (!ok) {
+          SeekNode(iter->Current());
+          return false;
+        } 
       }
     }
+    return true;
   }
  public:
   void DisableRouteHottest() {
@@ -305,7 +320,7 @@ struct SBSIterator : public Printable {
     for (; iter->Valid(); iter->Prev()) 
       iter->Current().SetStatisticsDirty();
   }
-  void Add(const SBSOptions& options, SBSNode::ValuePtr value) {
+  bool Add(const SBSOptions& options, SBSNode::ValuePtr value) {
     SeekRange(*value, true);
     //UpdateTargetStatistics(value->Identifier(), DefaultTypeLabel::LeafCount, 1, options.NowTimeSlice());
     if (s_.Top().height_ == 0) 
@@ -313,7 +328,8 @@ struct SBSIterator : public Printable {
     SetRouteStatisticsDirty();
     s_.Top().Add(options, value);
     //SetRouteStatisticsDirty();
-    CheckSplit(options);
+    bool state = CheckSplit(options);
+    return state;
   }
   std::vector<SBSNode::ValuePtr>& Recycler() { return recycler_; }
  private:

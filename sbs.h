@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <stack>
+#include <algorithm>
 #include "sbs_node.h"
 #include "sbs_iterator.h"
 #include "delineator.h"
@@ -70,12 +71,26 @@ struct SBSkiplist {
     iter_(head_) {}
   void Reinsert() { iter_.Reinsert(*options_); }
   std::shared_ptr<SBSIterator> NewIterator() const { return std::make_shared<SBSIterator>(head_); }
+  
   void Put(TypeValuePtr value) {
+    bool state = PutBlocked(value);
+    if (!state) {
+      BoundedValueContainer container;
+      assert(iter_.Current().TestState(*options_) > 0);
+      iter_.Current().SplitNext(*options_, &container);
+      for (auto &v : container) {
+        PutBlocked(v);
+      }
+    }
+  }
+  bool PutBlocked(TypeValuePtr value) {
     iter_.SeekToRoot();
     auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    iter_.Add(*options_, target);
+    bool state = iter_.Add(*options_, target);
+    return state;
     //iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
   }
+  
   void AddAll(const BoundedValueContainer& container) {
     for (auto range : container)
       iter_.Add(*options_, range);
@@ -194,7 +209,7 @@ struct SBSkiplist {
       os << i->ToString();
     os << "----------Print Detailed End----------" << std::endl;  
   }
-  void PrintSimple(std::ostream& os) const {
+  void OldPrintSimple(std::ostream& os) const {
     auto iter = NewIterator();
     std::vector<size_t> hs;
     size_t maxh = 0;
@@ -211,12 +226,42 @@ struct SBSkiplist {
     }
     os << "----------Print Simple End----------" << std::endl;
   }
+  void PrintSimple(std::ostream& os) const {
+    auto iter = NewIterator();
+    std::vector<std::vector<size_t>> map;
+    size_t maxh = 0;
+    os << "----------Print Simple Begin----------" << std::endl;
+    for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
+      auto height = iter->Current().node_->Height();
+      std::vector<size_t> height_state;
+      for (size_t i = 0; i < height; ++i)
+        height_state.push_back(iter->Current().node_->LevelAt(i)->buffer_.size());
+      map.push_back(height_state);
+      if (height > maxh) maxh = height;
+    }
+    for (int h = maxh - 1; h >= 0; --h) {
+      for (size_t i = 0; i < map.size(); ++i) {
+        if (map[i].size() > h)
+          os << (map[i][h] > 9 ? '@' : static_cast<const char>('0' + map[i][h]));
+        else 
+          os << ' ';
+      }
+      os << std::endl;
+    }
+    os << "----------Print Simple End----------" << std::endl;
+  }
   void PrintStatistics(std::ostream& os) const {
     os << "----------Print Statistics Begin----------" << std::endl;
     Delineator d;
     auto iter = NewIterator();
+    // return merged statistics.
+    //for (iter->SeekToFirst(0); iter->Valid(); iter->Next())
+    //  d.AddStatistics(iter->Current().node_->Guard(), iter->GetRouteMergedStatistics());
+    // return only last level statistics.
     for (iter->SeekToFirst(0); iter->Valid(); iter->Next())
-      d.AddStatistics(iter->Current().node_->Guard(), iter->GetRouteMergedStatistics());
+      if (iter->Current().Buffer().size() == 1)
+        d.AddStatistics(iter->Current().node_->Guard(), iter->Current().Buffer().GetStatistics());
+    
     d.PrintTo(os, options_->NowTimeSlice(), KSGetCount);
     os << "----------Print Statistics End----------" << std::endl;
   }
@@ -224,7 +269,7 @@ struct SBSkiplist {
   std::string ToString() const {
     std::stringstream ss;
     PrintSimple(ss);
-    PrintDetailed(ss);
+    //PrintDetailed(ss);
     PrintStatistics(ss);
     return ss.str();
   }
@@ -245,6 +290,14 @@ struct SBSkiplist {
   }
   std::shared_ptr<SBSNode> GetHead() const { return head_; }
   std::vector<SBSNode::ValuePtr>& Recycler() { return iter_.Recycler(); }
+
+  bool isDirty() const {
+    auto iter = NewIterator();
+    iter->SeekDirty();
+    if (iter->Current().height_ == 0) 
+      return 0;
+    return 1;
+  }
 };
 
 }
