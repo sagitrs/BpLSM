@@ -155,7 +155,7 @@ struct SBSIterator : public Printable {
       //size_t height = curr.node_->Height();
       //size_t depth = s_.Size();
       for (size_t h = h1; h < h2; ++h) 
-        s_.reverse_at(h) = Coordinates(curr.node_, h);
+        s_.reverse_at(h - h1) = Coordinates(curr.node_, h);
     }
   }
   virtual void Prev() { assert(false); }
