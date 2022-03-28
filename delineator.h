@@ -102,12 +102,13 @@ struct Delineator {
     for (size_t i = 0; i < n; ++i) 
       if (mask[i] && vec_[i].guard_.size() > max_paces_size)
         max_paces_size = vec_[i].guard_.size();
-    for (size_t i = 0; i < max_paces_size; ++i) {
-      os << "#";
-      for (size_t j = 0; j < n; ++j) if (mask[j])
-        os << (i < vec_[j].guard_.size() ? vec_[j].guard_[i] : ' ');
-      os << std::endl;
-    }
+    
+//    for (size_t i = 0; i < max_paces_size; ++i) {
+//      os << "#";
+//      for (size_t j = 0; j < n; ++j) if (mask[j])
+//        os << (i < vec_[j].guard_.size() ? vec_[j].guard_[i] : ' ');
+//      os << std::endl;
+//    }
   }
  private:
   void BuildMask(std::vector<bool> &mask, size_t n) {

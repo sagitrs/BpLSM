@@ -49,10 +49,13 @@ struct BVersionScorer : public Scorer {
 
     auto hottest = GetHottest(Global().time_);
     int64_t ri = (hottest == nullptr ? 1 : hottest->GetStatistics(KSGetCount, Global().time_));
-    
+    if (ri == 0) ri = 1;
     double kp = 1.0 * B * width * Write / 2 / E0 / ri; 
-
-    return width;
+    if (kp >= Options()->max_compaction_files_)
+      kp = Options()->max_compaction_files_ - 1;
+    if (kp > width)
+      kp = width;
+    return kp;
   }
 };
 
@@ -139,7 +142,7 @@ struct SBSkiplist {
     int rest = options_->MaxCompactionFiles();
     rest -= base_buffer.size();
 
-    bool skip_first_level = iter_.Current().Width() < options_->MinWidth();
+    //bool skip_first_level = iter_.Current().Width() < options_->MinWidth();
         //if (height > 1)
     //  iter_.GetChildGuardInCurrent(containers[2]);
     std::deque<Coordinates> queue;
@@ -160,11 +163,11 @@ struct SBSkiplist {
         files += iter_.Current().Width();
 
       bool load = false;
-      if (h == 0)
-        load = true;
-      else if (h + 1 == height && skip_first_level)
-        load = true;
-      else if (rest < files)
+      //if (h == 0)
+      //  load = true;
+      //else if (h + 1 == height && skip_first_level)
+      //  load = true;
+      if (rest < files)
         load = false;
       else {
         double score = scorer->GetScore(iter_.Current().node_, iter_.Current().height_); 
@@ -177,14 +180,21 @@ struct SBSkiplist {
         if (pacesetter) guards.push_back(pacesetter);
       } else { 
         iter_.GetBufferInCurrent(child_buffer); 
-        rest -= files;
 
-        if (iter_.Current().height_ > 0) {
+        if (h > 0) {
           auto ed = iter_.Current().NextNode().DownNode();
-          for (iter_.Dive(); !(iter_.Current() == ed); iter_.Next())
-            queue.push_back(Coordinates(iter_.Current()));
+          for (iter_.Dive(); !(iter_.Current() == ed); iter_.Next()) {
+            if (h > 1)
+              queue.push_back(Coordinates(iter_.Current()));
+            else if (h == 1)
+              iter_.GetBufferInCurrent(child_buffer);
+          }
         }
+        rest -= files;
       }
+    }
+    if (rest < 0) {
+      std::cout << "Warning : Compact too much files(" << rest << ")." << std::endl;
     }
   }
   double PickFilesByScore(std::shared_ptr<Scorer> scorer, double baseline,
