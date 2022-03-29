@@ -158,18 +158,21 @@ struct SBSkiplist {
       queue.pop_front();
       
       size_t h = iter_.Current().height_;
-      size_t files = h == 0 ? 0 : iter_.Current().Buffer().size();
+      int files = h == 0 ? 0 : iter_.Current().Buffer().size();
       if (h == 1) 
         files += iter_.Current().Width();
 
       bool load = false;
-      //if (h == 0)
-      //  load = true;
       //else if (h + 1 == height && skip_first_level)
       //  load = true;
-      if (rest < files)
+      if (h == 0)
+        load = true;
+      else if (rest < files)
         load = false;
       else {
+        if (rest < -10) {
+          std::cout << "Warning : Compact too much files(" << rest << ")." << std::endl;
+        }
         double score = scorer->GetScore(iter_.Current().node_, iter_.Current().height_); 
         score += 1.0 / scorer->Capacity();
         load = (score >= options_->NeedsCompactionScore());
@@ -191,10 +194,10 @@ struct SBSkiplist {
           }
         }
         rest -= files;
+        if (rest < 0 && h > 0) {
+          std::cout << "Warning : Compact too much files(" << rest << ")." << std::endl;
+        }
       }
-    }
-    if (rest < 0) {
-      std::cout << "Warning : Compact too much files(" << rest << ")." << std::endl;
     }
   }
   double PickFilesByScore(std::shared_ptr<Scorer> scorer, double baseline,
@@ -278,9 +281,13 @@ struct SBSkiplist {
  public:
   std::string ToString() const {
     std::stringstream ss;
-    PrintSimple(ss);
-    //PrintDetailed(ss);
+#if defined(WITH_BVERSION_DEBUG)
+    PrintDetailed(ss);
     PrintStatistics(ss);
+#elif defined(MINIMUM_BVERSION_DEBUG)
+    PrintSimple(ss);
+    PrintStatistics(ss);
+#endif
     return ss.str();
   }
   size_t size() const {
