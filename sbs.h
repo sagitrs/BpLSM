@@ -136,6 +136,8 @@ struct SBSkiplist {
     BoundedValueContainer& base_buffer = containers[0];
     BoundedValueContainer& child_buffer = containers[1];
     BoundedValueContainer& guards = containers[2];
+    BoundedValueContainer& l0guards = containers[3];
+    
 
     // get file in current.
     iter_.GetBufferInCurrent(base_buffer);    
@@ -178,19 +180,20 @@ struct SBSkiplist {
         load = (score >= options_->NeedsCompactionScore());
       }
 
-      if (!load) {
-        auto pacesetter = iter_.Current().node_->Pacesetter();
-        if (pacesetter) guards.push_back(pacesetter);
-      } else { 
+      auto pacesetter = iter_.Current().node_->Pacesetter();
+      if (pacesetter) {
+        if (h > 0) 
+          guards.push_back(pacesetter);
+        else if (h == 0)
+          l0guards.push_back(pacesetter);
+      }
+      if (load) { 
         iter_.GetBufferInCurrent(child_buffer); 
 
         if (h > 0) {
           auto ed = iter_.Current().NextNode().DownNode();
           for (iter_.Dive(); !(iter_.Current() == ed); iter_.Next()) {
-            if (h > 1)
               queue.push_back(Coordinates(iter_.Current()));
-            else if (h == 1)
-              iter_.GetBufferInCurrent(child_buffer);
           }
         }
         rest -= files;
@@ -306,7 +309,7 @@ struct SBSkiplist {
 
   }
   std::shared_ptr<SBSNode> GetHead() const { return head_; }
-  std::vector<SBSNode::ValuePtr>& Recycler() { return iter_.Recycler(); }
+  std::vector<std::pair<size_t, SBSNode::ValuePtr>>& Recycler() { return iter_.Recycler(); }
 
   bool isDirty() const {
     auto iter = NewIterator();

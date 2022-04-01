@@ -25,7 +25,9 @@ struct Coordinates {
   int TestState(const SBSOptions& options) const { return node_->TestState(options, height_); }
   size_t Width() const { return node_->Width(height_); }
   bool Fit(const Bounded& range, bool no_overlap) const { return node_->Fit(height_, range, no_overlap); }
-  SBSNode::ValuePtr Del(SBSNode::ValuePtr range) const { return node_->Del(height_, range); }
+  std::pair<size_t, SBSNode::ValuePtr> Del(SBSNode::ValuePtr range) const { 
+    return std::pair<size_t, SBSNode::ValuePtr>(height_, node_->Del(height_, range)); 
+  }
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) const { node_->Add(options, height_, range); }
   bool Contains(SBSNode::ValuePtr value) const { return node_->level_[height_]->Contains(value); }
   bool SplitNext(const SBSOptions& options, BoundedValueContainer* force = nullptr) { 
@@ -131,7 +133,8 @@ struct SBSIterator : public Printable {
  private:
   CoordinatesStack s_;
   SBSNode::SBSP head_;
-  std::vector<SBSNode::ValuePtr> recycler_, reinserter_;
+  std::vector<std::pair<size_t, SBSNode::ValuePtr>> recycler_;
+  std::vector<SBSNode::ValuePtr> reinserter_;
   //std::deque<SBSNode::ValuePtr> reinserter_;
  public:
   //-------------------------------------------------------------
@@ -332,7 +335,7 @@ struct SBSIterator : public Printable {
     bool state = CheckSplit(options);
     return state;
   }
-  std::vector<SBSNode::ValuePtr>& Recycler() { return recycler_; }
+  std::vector<std::pair<size_t, SBSNode::ValuePtr>>& Recycler() { return recycler_; }
  private:
  public:
   // Get all the values on the path that are overlap with the given range.
@@ -398,10 +401,10 @@ struct SBSIterator : public Printable {
     //SetRouteStatisticsDirty();
 
     auto target = s_.Top();
-    auto res = target.Del(value);
-    assert(res != nullptr);
+    std::pair<size_t, SBSNode::ValuePtr> res = target.Del(value);
+    assert(res.second != nullptr);
     if (s_.Top().height_ == 0) {
-      res->UpdateStatistics(DefaultTypeLabel::LeafCount, -1, options.NowTimeSlice());         // statistics.
+      res.second->UpdateStatistics(DefaultTypeLabel::LeafCount, -1, options.NowTimeSlice());         // statistics.
       DisableRouteHottest();
     }
     SetRouteStatisticsDirty();
