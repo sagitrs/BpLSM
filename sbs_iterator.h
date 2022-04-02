@@ -341,8 +341,13 @@ struct SBSIterator : public Printable {
   // Get all the values on the path that are overlap with the given range.
   void GetBufferOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range) {
     auto iter = s_.NewIterator();
-    for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       iter->Current().GetRanges(results, range);
+    }
+    iter->SeekToLast();
+    auto now = head_->options_->NowTimeSlice();
+    for (auto& file: iter->Current().Buffer()) {
+      file->UpdateStatistics(KSGetCount, 1, now);
     }
   }
   void GetBufferInCurrent(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) { s_.Top().GetRanges(results, range); }
