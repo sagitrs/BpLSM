@@ -71,7 +71,7 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
       
   }
   void PushFront(int64_t time, const Counter& counter) {
-    assert(time + 1 == st_time_);
+    assert(time + 1 == st_time_);   // TODO: Fix bug here.
     if (isFull()) return;
     st_time_ --;
     (*this)[time] = counter;
@@ -83,7 +83,8 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
     (*this)[time] = counter;
   }
   void Push(int64_t time, const Counter& counter) {
-    if (time <= ed_time_) {
+    if (time <= ed_time_) { 
+      //assert(t + 1 == st_time_);
       PushFront(time, counter);
       return; 
     }
@@ -152,7 +153,7 @@ struct Statistics : virtual public Statistable, virtual public Printable {
     MergeStatistics(target);
   }
   virtual void UpdateTime(TypeTime time) override {
-    if (queue_.ed_time_ == time) return;
+    if (queue_.ed_time_ >= time) return;
     Counter blank;
     queue_.Push(time, blank);
   }
