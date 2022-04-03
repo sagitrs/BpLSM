@@ -125,8 +125,6 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
       snapshot.emplace_back(
         "A["+std::to_string(i)+"]", 
         std::to_string(operator[](i)->Identifier())
-         + "|" + 
-        std::to_string(operator[](i)->GetStatistics(KSGetCount, STATISTICS_ALL))
       );
   }
  private:

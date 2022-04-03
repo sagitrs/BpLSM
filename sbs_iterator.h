@@ -176,7 +176,6 @@ struct SBSIterator : public Printable {
   }
   void SeekToLast(int level) {
     assert(false);
-    
   }
   // ---------------------iterator operation end-----------------
  public:
@@ -288,32 +287,6 @@ struct SBSIterator : public Printable {
         h = nullptr;
       else
         break;
-    }
-  }
-  void UpdateRouteHottest(std::shared_ptr<BoundedValue> target) {
-    if (Current().height_ > 0) {
-      // nothing to be updated.
-      return;
-    }
-    auto iter = s_.NewIterator();
-
-    for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
-      auto &h = iter->Current().Table().hottest_;
-      auto &t = iter->Current().Table().update_time_;
-      if (iter->Current().height_ == 0) {
-        assert(iter->Current().Buffer().size() == 1 && iter->Current().Buffer()[0] == target);
-        h = target;
-      } else {
-        if (h == nullptr) {
-          
-          auto tmp = iter->Current().GetHottest(t);
-          assert(tmp == h);
-        }
-        if (h->GetStatistics(KSGetCount, t) < target->GetStatistics(KSGetCount, t)) 
-          h = target;
-        else
-          return;
-      }
     }
   }
   void SetRouteStatisticsDirty() {
@@ -503,7 +476,42 @@ struct SBSIterator : public Printable {
     }
     return sum;
   }
+
+  void UpdateGlobalStatistics(uint32_t label, int64_t diff, int time) {
+    
+  }
 };
 
 
 }  
+
+/*
+
+  void UpdateRouteHottest(std::shared_ptr<BoundedValue> target) {
+    if (Current().height_ > 0) {
+      // nothing to be updated.
+      return;
+    }
+    auto iter = s_.NewIterator();
+
+    for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+      auto &h = iter->Current().Table().hottest_;
+      auto &t = iter->Current().Table().update_time_;
+      if (iter->Current().height_ == 0) {
+        assert(iter->Current().Buffer().size() == 1 && iter->Current().Buffer()[0] == target);
+        h = target;
+      } else {
+        if (h == nullptr) {
+          
+          auto tmp = iter->Current().GetHottest(t);
+          assert(tmp == h);
+        }
+        if (h->GetStatistics(KSGetCount, t) < target->GetStatistics(KSGetCount, t)) 
+          h = target;
+        else
+          return;
+      }
+    }
+  }
+
+*/

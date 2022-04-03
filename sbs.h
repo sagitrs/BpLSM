@@ -278,7 +278,12 @@ struct SBSkiplist {
       if (iter->Current().Buffer().size() == 1)
         d.AddStatistics(iter->Current().node_->Guard(), iter->Current().Buffer().GetStatistics());
     
+    os << "----------Print KSGet----------" << std::endl;
     d.PrintTo(os, options_->NowTimeSlice(), KSGetCount);
+    os << "----------Print KSPut----------" << std::endl;
+    d.PrintTo(os, options_->NowTimeSlice(), KSPutCount);
+    os << "----------Print KSIterate----------" << std::endl;
+    d.PrintTo(os, options_->NowTimeSlice(), KSIterateCount);
     os << "----------Print Statistics End----------" << std::endl;
   }
  public:

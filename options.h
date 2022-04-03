@@ -25,9 +25,14 @@ enum DefaultTypeLabel : uint32_t {
   ValueGetCount,
   // to record get operation of this value.
   // clear at Compaction.
-  IterateCount,
+  KSIterateCount,
   // to record iterate operation of this value.
   // clear at Compaction.
+  KSPutCount,
+  // to record get operation in key space.
+  // Inherited at Compaction.
+  // Construct: Set to 0 for all nodee.
+  // Update: increase when buffer element is read.   
   PutCount,
   // for special usage.
   // recording total put operations globally.
