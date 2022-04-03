@@ -477,9 +477,7 @@ struct SBSIterator : public Printable {
     return sum;
   }
 
-  void UpdateGlobalStatistics(uint32_t label, int64_t diff, int time) {
-    
-  }
+  //void UpdateGlobalStatistics(uint32_t label, int64_t diff, int time) {}
 };
 
 

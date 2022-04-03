@@ -112,7 +112,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 
 // Statistics args: 
  private:
-  size_t time_slice_ = 15 * 1000 * 1000;
+  size_t time_slice_ = 5 * 1000 * 1000;
   size_t time_count_ = 10;
   size_t time_slice_before_merge_ = 2;
   double B = 0.1, I = 0.9, D = 0.0;
@@ -127,7 +127,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   virtual double kIntegrationWeight() const override { return I; }
   virtual double kDifferentiationWeight() const override { return D; }
 
-  double needs_compaction_score_ = 0.8;
+  double needs_compaction_score_ = 0.9;
   size_t max_compaction_files_ = 15;
   bool force_compaction_ = 0;
   virtual double NeedsCompactionScore() const override { 
