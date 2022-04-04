@@ -7,74 +7,10 @@
 #include "sbs_node.h"
 #include "sbs_iterator.h"
 #include "delineator.h"
+
+#include "scorer_impl.h"
 namespace sagitrs {
 struct Scorer;
-
-struct LeveledScorer : public Scorer {
- private:
-  size_t base_children_ = 10;
-  const size_t allow_seek_ = (uint64_t)(2) * 1024 * 1024 / 16384U;
- public:
-  LeveledScorer() {}
-  using Scorer::Init;
-  using Scorer::Reset;
-  using Scorer::Update;
-  using Scorer::MaxScore;
-  using Scorer::GetScore;
-  using Scorer::ValueScore;
- private: // override this function.
-  virtual double ValueCalculate(std::shared_ptr<BoundedValue> value) override { 
-    return std::max(0.1, 1.0 * value->GetStatistics(ValueGetCount, STATISTICS_ALL) / allow_seek_); 
-  }
-};
-struct BVersionScorer : public Scorer {
- private:
-  size_t base_children_ = 10;
-  const size_t allow_seek_ = (uint64_t)(2) * 1024 * 1024 / 16384U;
- public:
-  BVersionScorer() {}
-  using Scorer::Init;
-  using Scorer::Reset;
-  using Scorer::Update;
-  using Scorer::MaxScore;
-  using Scorer::GetScore;
-  using Scorer::ValueScore;
-  using Scorer::GetStatistics;
- private: // override this function.
-  virtual double ValueCalculate(std::shared_ptr<BoundedValue> value) override { return 1; }
-  virtual size_t Capacity() override { 
-    size_t width = Width();
-    
-    if (Height() > 1) return width / 2;
-    if (Height() == 0) {assert(false); return 2;}
-    assert(Height() == 1);
-
-    auto now = Options()->NowTimeSlice();
-    auto stats = GetStatistics();
-    double time = 1.0 * Options()->TimeSliceMicroSecond() / 1000 / 1000;
-    double Read = 1.0 * stats->GetStatistics(KSGetCount, now - 1) / time;
-    double Write = 1.0 * stats->GetStatistics(KSPutCount, now - 1) / time;
-    double Iterate = 1.0 * stats->GetStatistics(KSIterateCount, now - 1) / time;
-    double fpr = 0.01;
-    double k1 = (fpr * Read + Iterate);
-    if (k1 < 0.0001) k1 = 0.0001;
-    k1 = 1.0 * Write / k1;
-
-    size_t Ei = Options()->MaxWriteBufferSize();
-    size_t Eo = Options()->MaxFileSize();
-    double k2 = 2.0 * width * Eo / Ei;
-
-    double kp = std::sqrt(k1 * k2);
-    
-    double kp_max = Options()->DefaultWidth() * 2;
-    double kp_min = 1;
-    if (kp < kp_min) kp = kp_min;
-    if (kp > kp_max) kp = kp_max;
-
-    return kp;
-  }
-};
-
 struct SBSkiplist {
   friend struct Scorer;
   typedef std::shared_ptr<BoundedValue> TypeValuePtr;
@@ -305,11 +241,11 @@ struct SBSkiplist {
  public:
   std::string ToString() const {
     std::stringstream ss;
-#if defined(WITH_BVERSION_DEBUG)
-    PrintDetailed(ss);
-    PrintStatistics(ss);
-#elif defined(MINIMUM_BVERSION_DEBUG)
+#if defined(MINIMUM_BVERSION_DEBUG)
     PrintSimple(ss);
+    PrintStatistics(ss);
+#else
+    PrintDetailed(ss);
     PrintStatistics(ss);
 #endif
     return ss.str();

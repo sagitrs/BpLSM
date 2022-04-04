@@ -127,7 +127,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   virtual double kIntegrationWeight() const override { return I; }
   virtual double kDifferentiationWeight() const override { return D; }
 
-  double needs_compaction_score_ = 0.9;
+  double needs_compaction_score_ = 1;
   size_t max_compaction_files_ = 15;
   bool force_compaction_ = 0;
   virtual double NeedsCompactionScore() const override { 
@@ -137,7 +137,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 
  public:
   //size_t max_file_size_ = 2 * 1024 * 1024;
-  size_t MaxWriteBufferSize() const { return 64 * 1024 * 1024; }
+  size_t MaxWriteBufferSize() const { return 16 * 1024 * 1024; }
   size_t MaxFileSize() const { return 2 * 1024 * 1024; }
   size_t Width() const { return BaseWidth; }
 

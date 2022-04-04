@@ -55,7 +55,7 @@ struct Scorer {
   bool isUpdated() const { return is_updated_; }
  
   virtual double ValueCalculate(std::shared_ptr<BoundedValue> value) { return 1; }
-  virtual size_t Capacity() { return Width(); }
+  virtual double Capacity() { return Width(); }
   virtual double Calculate() {
     double score = 0;
     for (auto value : Buffer())
