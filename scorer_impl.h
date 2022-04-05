@@ -15,7 +15,7 @@ struct Scorer;
 struct LeveledScorer : public Scorer {
  private:
   size_t base_children_ = 10;
-  const size_t allow_seek_ = (uint64_t)(2) * 1024 * 1024 / 16384U;
+  const size_t allow_seek_ = (uint64_t)(4) * 1024 * 1024 / 16384U;
  public:
   LeveledScorer() {}
   using Scorer::Init;
