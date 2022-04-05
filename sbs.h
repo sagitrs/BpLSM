@@ -89,7 +89,6 @@ struct SBSkiplist {
     BoundedValueContainer& child_buffer = containers[1];
     BoundedValueContainer& guards = containers[2];
     BoundedValueContainer& l0guards = containers[3];
-    
 
     // get file in current.
     iter_.GetBufferInCurrent(base_buffer);    
@@ -103,7 +102,8 @@ struct SBSkiplist {
     for (iter_.Dive(); 
          iter_.Valid() && iter_.Current().node_->Guard().compare(base_buffer.Max()) <= 0; 
          iter_.Next()) {
-      queue.push_back(Coordinates(iter_.Current()));
+      if (base_buffer.Include(iter_.Current().node_->Guard()))
+        queue.push_back(Coordinates(iter_.Current()));
     }
 
     while (!queue.empty()) {
@@ -119,6 +119,8 @@ struct SBSkiplist {
       bool load = false;
       //else if (h + 1 == height && skip_first_level)
       //  load = true;
+      if (base_buffer.Include(iter_.Current().node_->Guard()) == false)
+        load = false;
       if (h == 0)
         load = true;
       else if (rest < files)
