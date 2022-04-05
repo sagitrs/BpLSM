@@ -243,7 +243,7 @@ struct SBSkiplist {
     std::stringstream ss;
 #if defined(WITH_BVERSION_DEBUG)
     PrintDetailed(ss);
-    PrintStatistics(ss);
+    //PrintStatistics(ss);
 #else
     PrintSimple(ss);
     //PrintStatistics(ss);
