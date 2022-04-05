@@ -128,7 +128,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   virtual double kDifferentiationWeight() const override { return D; }
 
   double needs_compaction_score_ = 1;
-  size_t max_compaction_files_ = 15;
+  size_t max_compaction_files_ = 99;
   bool force_compaction_ = 0;
   virtual double NeedsCompactionScore() const override { 
     return force_compaction_ ? 0 :needs_compaction_score_; 
