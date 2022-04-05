@@ -246,7 +246,7 @@ struct SBSkiplist {
     PrintStatistics(ss);
 #else
     PrintSimple(ss);
-    PrintStatistics(ss);
+    //PrintStatistics(ss);
 #endif
     return ss.str();
   }
