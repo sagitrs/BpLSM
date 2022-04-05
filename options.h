@@ -138,7 +138,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
  public:
   //size_t max_file_size_ = 2 * 1024 * 1024;
   size_t MaxWriteBufferSize() const { return 32 * 1024 * 1024; }
-  size_t MaxFileSize() const { return 32 * 1024 * 1024; }
+  size_t MaxFileSize() const { return 4 * 1024 * 1024; }
   size_t Width() const { return BaseWidth; }
 
  public:
