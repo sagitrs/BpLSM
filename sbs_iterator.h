@@ -258,6 +258,21 @@ struct SBSIterator : public Printable {
     s_ = max_stack;
     return scorer->MaxScore();
   }
+  double SeekScoreInHeight(int height, std::shared_ptr<Scorer> scorer, double baseline, bool optimal) {
+    scorer->Init(head_);
+    scorer->Reset(baseline);
+    CoordinatesStack max_stack(s_);
+    
+    for (SeekToFirst(height); Valid(); Next()) 
+      if (scorer->Update(s_.Top().node_, s_.Top().height_)) { 
+        max_stack = s_;
+        if (!optimal)
+          return scorer->MaxScore();
+      }
+    
+    s_ = max_stack;
+    return scorer->MaxScore();
+  }
  private:
   bool CheckSplit(const SBSOptions& options) {
     auto iter = s_.NewIterator();

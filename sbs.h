@@ -80,8 +80,8 @@ struct SBSkiplist {
     //auto target = std::dynamic_pointer_cast<BoundedValue>(value);
     return iter_.Del(*options_, value, auto_reinsert);
   }
-  void PickFilesByIterator(std::shared_ptr<Scorer> scorer, int& height, BoundedValueContainer* containers) {
-    height = iter_.Current().height_;
+  void PickFilesByIterator(std::shared_ptr<Scorer> scorer, BoundedValueContainer* containers) {
+    //height = iter_.Current().height_;
     if (containers == nullptr)
       return;
     
@@ -157,13 +157,13 @@ struct SBSkiplist {
       }
     }
   }
-  double PickFilesByScore(std::shared_ptr<Scorer> scorer, double baseline,
-                          int& height, BoundedValueContainer* containers = nullptr) {
+  double PickFilesByScore(int height, std::shared_ptr<Scorer> scorer, double baseline,
+                          BoundedValueContainer* containers = nullptr) {
     iter_.SeekToRoot();
-    double max_score = iter_.SeekScore(scorer, baseline, true);
-    height = iter_.Current().height_;
+    double max_score = iter_.SeekScoreInHeight(height, scorer, baseline, true);
+    //height = iter_.Current().height_;
     if (containers)
-      PickFilesByIterator(scorer, height, containers);
+      PickFilesByIterator(scorer, containers);
     return max_score;
   }
   bool HasScore(std::shared_ptr<Scorer> scorer, double baseline) {
