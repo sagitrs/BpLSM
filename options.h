@@ -103,7 +103,7 @@ struct StatisticsOptions {
 struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 // Width limit of nodes:
  private:
-  static const size_t BaseWidth = 11;
+  static const size_t BaseWidth = 8;
   size_t width_[3] = {BaseWidth * 2 / 3, BaseWidth * 4 / 3};
  public:
   size_t MinWidth() const override { return width_[0]; }
@@ -137,7 +137,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 
  public:
   //size_t max_file_size_ = 2 * 1024 * 1024;
-  size_t MaxWriteBufferSize() const { return 16 * 1024 * 1024; }
+  size_t MaxWriteBufferSize() const { return 32 * 1024 * 1024; }
   size_t MaxFileSize() const { return 2 * 1024 * 1024; }
   size_t Width() const { return BaseWidth; }
 

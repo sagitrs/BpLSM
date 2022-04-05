@@ -241,11 +241,11 @@ struct SBSkiplist {
  public:
   std::string ToString() const {
     std::stringstream ss;
-#if defined(MINIMUM_BVERSION_DEBUG)
-    PrintSimple(ss);
+#if defined(WITH_BVERSION_DEBUG)
+    PrintDetailed(ss);
     PrintStatistics(ss);
 #else
-    PrintDetailed(ss);
+    PrintSimple(ss);
     PrintStatistics(ss);
 #endif
     return ss.str();
