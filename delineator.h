@@ -124,7 +124,8 @@ struct Delineator {
     char graph[] = {'-', '1', '2', '3', '4', '5', '6', '7', '8', '9', '@', '@', '@'};
     int64_t x = value - min, step = (max - min) / 10;
     if (step == 0) return graph[0];
-    return graph[x / step];
+    int y = x / step; if (y >= 10) y = 9; if (y < 0) y = 0;
+    return graph[y];
   }
 };
 
