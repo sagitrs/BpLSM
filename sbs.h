@@ -102,8 +102,8 @@ struct SBSkiplist {
     for (iter_.Dive(); 
          iter_.Valid() && iter_.Current().node_->Guard().compare(base_buffer.Max()) <= 0; 
          iter_.Next()) {
-      if (base_buffer.Include(iter_.Current().node_->Guard()))
-        queue.push_back(Coordinates(iter_.Current()));
+      //if (base_buffer.Include(iter_.Current().node_->Guard()))
+      queue.push_back(Coordinates(iter_.Current()));
     }
 
     while (!queue.empty()) {
