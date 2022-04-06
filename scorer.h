@@ -73,6 +73,9 @@ struct Scorer {
   std::shared_ptr<Statistable> GetStatistics() { return node_->GetTreeStatistics(height_); }
   std::shared_ptr<BoundedValue> GetHottest(int64_t time) { return node_->GetHottest(height_, time); }
   std::shared_ptr<SBSOptions> Options() { return node_->options_; }
+  void GetChildren(sagitrs::BoundedValueContainer* children) {
+    node_->GetChildGuard(height_, children);
+  }
 };
 
 }
