@@ -22,13 +22,20 @@ struct Printable {
   virtual void PrintTo(std::ostream& os) const {
     std::vector<KVPair> snapshot;
     GetStringSnapshot(snapshot);
-    for (auto& kv : snapshot) { os << kv.first << ":" << kv.second << ","; }
+    for (auto& kv : snapshot) { os << KVPairToString(kv) << ","; }
   }
   virtual std::string ToString() const {
     std::stringstream ss;
     PrintTo(ss);
     return ss.str();
   }
+  static std::string KVPairToString(const KVPair& kv, int width = -1) {
+    std::string res = kv.first + ":" + kv.second;
+    if (width == -1) return res;
+    if (res.size() >= width) return res.substr(0, width);
+    std::string suffix(width - res.size(), ' ');
+    return res + suffix;
+  } 
 };
 
 struct Statistable {
@@ -49,6 +56,7 @@ struct Statistable {
 
 struct Identifiable {
   virtual uint64_t Identifier() const = 0;
+  virtual uint64_t Size() const = 0;
   bool operator ==(const Identifiable& obj) const { return Identifier() == obj.Identifier(); }
 };
 

@@ -119,7 +119,7 @@ struct SBSkiplist {
       bool load = false;
       //else if (h + 1 == height && skip_first_level)
       //  load = true;
-      if (base_buffer.Include(iter_.Current().node_->Guard()) == false)
+      if (base_buffer.Compare(iter_.Current().Buffer()) == sagitrs::BOverlap)
         load = false;
       if (h == 0)
         load = true;
@@ -179,6 +179,94 @@ struct SBSkiplist {
       os << i->ToString();
     os << "----------Print Detailed End----------" << std::endl;  
   }
+  void PrintList(std::ostream& os) const {
+    struct NodeStatus : public Printable {
+      struct ValueStatus {
+        size_t width_;
+        uint64_t id_;
+        uint64_t size_;
+      };
+      std::vector<sagitrs::Printable::KVPair> ns_;
+      std::vector<ValueStatus> vs_;
+      size_t width_;
+      virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
+        for (auto& kv : ns_) snapshot.push_back(kv);
+        for (auto& vs : vs_) {
+          snapshot.emplace_back(std::to_string(vs.id_), std::to_string(vs.size_ / 1024) + "K" 
+            + "|" + std::to_string(vs.width_) + "/" + std::to_string(width_));
+        }
+      }
+    };
+    auto iter = NewIterator();
+    std::vector<std::vector<NodeStatus>> map;
+    size_t maxh = 0;
+    os << "----------Print List Begin----------" << std::endl;
+    for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
+      auto node = iter->Current().node_;
+      auto height = node->Height();
+      map.emplace_back();
+      std::vector<NodeStatus>& lns = *map.rbegin();
+      for (Coordinates c = iter->Current(); c.height_ < height; c.height_ ++) {
+        lns.emplace_back(); NodeStatus& status = *lns.rbegin();//NodeStatus status;
+        iter->SeekNode(c);
+        BoundedValueContainer children;
+        iter->GetChildGuardInCurrent(children);
+        for (auto value : c.Buffer()) {
+          NodeStatus::ValueStatus vs;
+          vs.width_ = iter->GetValueWidth(value, children);
+          vs.size_ = value->Size();
+          vs.id_ = value->Identifier();
+          status.vs_.push_back(vs);
+        }
+        c.Buffer().GetStringSnapshot(status.ns_);
+        status.width_ = children.size();
+        //lns.push_back(status);
+        iter->SeekNode(Coordinates(node, 0));
+      }
+      if (height > maxh) maxh = height;
+    }
+    for (int h = maxh - 1; h >= 0; --h) {
+      std::vector<std::vector<Printable::KVPair>> print_list;
+      int max = 0;
+      for (size_t i = 0; i < map.size(); ++i) {
+        print_list.emplace_back();
+        std::vector<Printable::KVPair>& node_list = print_list[i];
+        if (map[i].size() > h) {
+          map[i][h].GetStringSnapshot(node_list);
+          if (node_list.size() > max) max = node_list.size();
+        }
+      }
+      static const size_t PrintWidth = 20;
+      for (int l = -1; l <= max; ++l) {
+        if (l == -1 || l == max) {
+          bool prev = 0;
+          bool curr = 0;
+          for (size_t i = 0; i < print_list.size(); ++i) {
+            curr = print_list[i].size() > 0;
+            os << ((prev || curr) ?  "+" : " ");
+            os << std::string(PrintWidth, (curr ? '-' : ' '));
+            prev = curr;
+          }
+          os << (curr ? '+' : ' ');
+        } else {
+          bool prev = 0;
+          bool curr = 0;
+          bool line = 0;
+          for (size_t i = 0; i < print_list.size(); ++i) {
+            curr = print_list[i].size() > 0;
+            line = print_list[i].size() > l;
+            os << ((prev || curr) ?  "|" : " ");
+            os << (line ? Printable::KVPairToString(print_list[i][l], PrintWidth) : std::string(PrintWidth,' '));
+            prev = curr;
+          }
+          os << (curr ? '|' : ' ');
+        }
+        os << std::endl;
+      }
+    }
+    os << "----------Print List End----------" << std::endl;
+  }
+ 
   void OldPrintSimple(std::ostream& os) const {
     auto iter = NewIterator();
     std::vector<size_t> hs;
@@ -243,13 +331,10 @@ struct SBSkiplist {
  public:
   std::string ToString() const {
     std::stringstream ss;
-#if defined(WITH_BVERSION_DEBUG)
-    PrintDetailed(ss);
+    PrintList(ss);
     //PrintStatistics(ss);
-#else
-    PrintSimple(ss);
+    //PrintSimple(ss);
     //PrintStatistics(ss);
-#endif
     return ss.str();
   }
   size_t size() const {

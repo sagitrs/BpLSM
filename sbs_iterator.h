@@ -493,6 +493,14 @@ struct SBSIterator : public Printable {
   }
 
   //void UpdateGlobalStatistics(uint32_t label, int64_t diff, int time) {}
+  size_t GetValueWidth(std::shared_ptr<BoundedValue> value, const BoundedValueContainer& bounds) {
+    Slice a(value->Min()), b(value->Max());
+    size_t width = 1;
+    for (auto & child : bounds)
+      if (value->Include(*child))
+        width ++;
+    return width;
+  }
 };
 
 
