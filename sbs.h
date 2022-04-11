@@ -80,7 +80,7 @@ struct SBSkiplist {
     //auto target = std::dynamic_pointer_cast<BoundedValue>(value);
     return iter_.Del(*options_, value, auto_reinsert);
   }
-  void PickFilesByIterator(std::shared_ptr<Scorer> scorer, BoundedValueContainer* containers) {
+  void PickFilesByIteratorOld(std::shared_ptr<Scorer> scorer, BoundedValueContainer* containers) {
     //height = iter_.Current().height_;
     if (containers == nullptr)
       return;
@@ -95,9 +95,6 @@ struct SBSkiplist {
     int rest = options_->MaxCompactionFiles();
     rest -= base_buffer.size();
 
-    //bool skip_first_level = iter_.Current().Width() < options_->MinWidth();
-        //if (height > 1)
-    //  iter_.GetChildGuardInCurrent(containers[2]);
     std::deque<Coordinates> queue;
     for (iter_.Dive(); 
          iter_.Valid() && iter_.Current().node_->Guard().compare(base_buffer.Max()) <= 0; 
@@ -134,12 +131,14 @@ struct SBSkiplist {
         load = (score >= options_->NeedsCompactionScore());
       }
 
-      auto pacesetter = iter_.Current().node_->Pacesetter();
-      if (pacesetter) {
+      //auto pacesetter = iter_.Current().node_->Pacesetter();
+      auto& l0buffer = iter_.Current().node_->LevelAt(0)->buffer_;
+      auto guard = (l0buffer.size() == 0 ? nullptr : l0buffer.at(0));// Pacesetter();
+      if (guard) {
         if (h > 0) 
-          guards.push_back(pacesetter);
+          guards.push_back(guard);
         else if (h == 0)
-          l0guards.push_back(pacesetter);
+          l0guards.push_back(guard);
       }
       if (load) { 
         iter_.GetBufferInCurrent(child_buffer); 
@@ -154,6 +153,43 @@ struct SBSkiplist {
         if (rest < 0 && h > 0) {
           std::cout << "Warning : Compact too much files(" << rest << ")." << std::endl;
         }
+      }
+    }
+  }
+  void PickFilesByIterator(std::shared_ptr<Scorer> scorer, BoundedValueContainer* containers) {
+    if (containers == nullptr) return;
+    
+    BoundedValueContainer& base_buffer = containers[0];
+    BoundedValueContainer& child_buffer = containers[1];
+    BoundedValueContainer& guards = containers[2];
+    BoundedValueContainer& l0guards = containers[3];
+
+    // get file in current.
+    iter_.GetBufferInCurrent(base_buffer);
+    // if last level, pick files into this compaction, otherwise push to guards.
+    int height = iter_.Current().height_;
+    
+    auto st = iter_.Current(); st.JumpDown();
+    auto ed = iter_.Current(); ed.JumpNext(); ed.JumpDown();
+    // in a special case, too few children in this level.
+    if (height >= 2 && iter_.Current().Width() < options_->MinWidth()) {
+      for (iter_.Dive(); iter_.Valid() && !(iter_.Current() == ed); iter_.Next()) {
+        iter_.GetBufferInCurrent(base_buffer);
+      }
+      st.JumpDown(); ed.JumpDown();
+    }
+
+    for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
+      auto& l0buffer = c.node_->LevelAt(0)->buffer_;
+      if (l0buffer.size() == 0) continue;
+      auto l0file = l0buffer.at(0);
+      //auto pacesster
+      
+      if (height == 1) {
+        child_buffer.push_back(l0file);
+        l0guards.push_back(l0file);
+      } else {
+        guards.push_back(l0file);
       }
     }
   }

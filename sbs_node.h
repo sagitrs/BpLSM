@@ -49,7 +49,7 @@ struct SBSNode : public Printable {
   std::shared_ptr<BoundedValue> Pacesetter() const { return pacesetter_; }
   Slice Guard() const { 
     if (is_head_) return "";
-    return pacesetter_->Min(); 
+    return Pacesetter()->Min(); 
   }
   size_t Height() const { return level_.size(); } 
   SBSP Next(size_t k, size_t recursive = 1) const { 
@@ -71,13 +71,21 @@ struct SBSNode : public Printable {
       width ++;
     return width;
   }
+  size_t GeneralWidth(size_t height, size_t depth = 1) const {
+    if (height < depth) return 0;
+    SBSP ed = Next(height);
+    size_t width = 1;
+    for (SBSP next = Next(height - depth); next != ed; next = next->Next(height - depth)) 
+      width ++;
+    return width;
+  }
   void GetChildGuard(size_t height, BoundedValueContainer* container) const {
     if (height == 0 || container == nullptr) return;
     SBSP ed = Next(height);
-    if (pacesetter_) container->push_back(pacesetter_);
+    if (Pacesetter()) container->push_back(Pacesetter());
     for (SBSP next = Next(height - 1); next != ed; next = next->Next(height - 1)) 
-      if (next->pacesetter_)
-        container->push_back(next->pacesetter_);
+      if (next->Pacesetter())
+        container->push_back(next->Pacesetter());
   }
   bool HasEmptyChild(size_t height) const {
     if (height == 0) return 0;
@@ -132,6 +140,8 @@ struct SBSNode : public Printable {
     return options.TestState(width, is_head_); 
   }
   bool Fit(size_t height, const Bounded& range, bool no_overlap) const { 
+    Slice a(Guard()), b(Next(height)?Next(height)->Guard():"");
+    Slice ra(range.Min()), rb(range.Max());
     int cmp1 = range.Min().compare(Guard());
     if (cmp1 < 0) return 0;
     auto next = Next(height);

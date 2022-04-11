@@ -161,7 +161,7 @@ struct SBSIterator : public Printable {
         s_.reverse_at(h - h1) = Coordinates(curr.node_, h);
     }
   }
-  virtual void Prev() { assert(false); }
+  virtual void Prev(size_t recursive = 1) { assert(false); }
   void Dive(size_t recursive = 1) {
     auto curr = s_.Top();
     assert(curr.height_ > 0);
@@ -346,7 +346,7 @@ struct SBSIterator : public Printable {
     ed.JumpNext(); 
     ed.JumpDown();
     for (auto i = Coordinates(s_.Top().node_, ed.height_); i.Valid() && !(i == ed); i.JumpNext()) {
-      auto cp = i.node_->pacesetter_;
+      auto cp = i.node_->Pacesetter();
       if (cp != nullptr)
         results.push_back(cp);
     }
@@ -361,22 +361,22 @@ struct SBSIterator : public Printable {
   // This may recursively trigger a merge operation and possibly a split operation.
   void Reinsert(const SBSOptions& options) {
     //assert(reinserter_.empty());
-    for (auto e : reinserter_) {
-      bool ok = Del_(options, e, false);
+    for (auto e : reinserter_) if (e.get() != nullptr) {
+      bool ok = Del_(options, e, false) >= 0;
       if (ok)
         Add(options, e);
     }
     reinserter_.clear();
   }
   bool Del(const SBSOptions& options, SBSNode::ValuePtr range, bool auto_reinsert = true) {
-    bool ok = Del_(options, range);
-    if (!ok) 
+    int level = Del_(options, range, &auto_reinsert);
+    if (level == -1) 
       return 0;
-    if (auto_reinsert) 
+    if (auto_reinsert || level == 0) 
       Reinsert(options);
     return 1;
   }
-  bool Del_(const SBSOptions& options, SBSNode::ValuePtr value, bool recycle = true) {
+  int Del_(const SBSOptions& options, SBSNode::ValuePtr value, bool recycle = true) {
     // 1. Delete file in target node.
     // 2. (for inner node) check if split happens. if so, stop here.
     // 3. (for leaf node) check if node became empty. if so, check absorb recursively.
@@ -385,11 +385,11 @@ struct SBSIterator : public Printable {
     //   3. recalculate node status.
     //   4. check if child node is less enough to check absorb recursively.
     // 4. recalculate all nodes' child-state.
-    SeekToRoot();
+    SeekToRoot(); Slice a(value->Min()), b(value->Max());
     SeekRange(*value);
     auto res0 = SeekValueInRoute(value->Identifier());
     if (res0 == nullptr) 
-      return 0;
+      return -1;
     //if (s_.Top().height_ == 0) s_.Top().->UpdateStatistics(DefaultTypeLabel::LeafCount, 1, options.NowTimeSlice());           // inc leaf.
     //SetRouteStatisticsDirty();
 
@@ -409,7 +409,7 @@ struct SBSIterator : public Printable {
     int state = target.TestState(options);
     if (height > 0 && state > 0 && !target.IsDirty()) {
       CheckSplit(options);
-      return 1;
+      return height;
     }
 
     // for leaf node:
@@ -452,7 +452,7 @@ struct SBSIterator : public Printable {
       }
     }
     SeekToRoot();
-    return 1;
+    return 0;
   }
 
   virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {

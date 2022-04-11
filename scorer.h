@@ -66,13 +66,18 @@ struct Scorer {
  protected:
   void SetNode(std::shared_ptr<SBSNode> node, size_t height) { node_ = node; height_ = height; }
   size_t Height() const { return height_; }
-  size_t Width() const { return node_->Width(height_); }
+  size_t Width() const { 
+    size_t res = node_->Width(height_); 
+    if (res < Options()->MinWidth())
+      res = node_->GeneralWidth(height_, 2);
+    return res;
+  }
   BoundedValueContainer& Buffer() const { return node_->level_[height_]->buffer_; }
   size_t BufferSize() const { return node_->level_[height_]->buffer_.size(); }
   const GlobalStatus& Global() const { return *status_; }
   std::shared_ptr<Statistable> GetStatistics() { return node_->GetTreeStatistics(height_); }
   std::shared_ptr<BoundedValue> GetHottest(int64_t time) { return node_->GetHottest(height_, time); }
-  std::shared_ptr<SBSOptions> Options() { return node_->options_; }
+  std::shared_ptr<SBSOptions> Options() const { return node_->options_; }
   void GetChildren(sagitrs::BoundedValueContainer* children) {
     node_->GetChildGuard(height_, children);
   }
