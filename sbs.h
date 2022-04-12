@@ -26,6 +26,7 @@ struct SBSkiplist {
     iter_(head_) {}
   void Reinsert() { iter_.Reinsert(*options_); }
   std::shared_ptr<SBSIterator> NewIterator() const { return std::make_shared<SBSIterator>(head_); }
+  SBSIterator* QuickNewIterator() const { return new SBSIterator(head_); }
   
   void Put(TypeValuePtr value) {
     bool state = PutBlocked(value);
@@ -55,12 +56,23 @@ struct SBSkiplist {
     iter_.SeekRange(range, true);
     return iter_.Current().height_;
   }
-  void Get(const Bounded& range, BoundedValueContainer& container, std::shared_ptr<Scorer> scorer = nullptr) {
-    iter_.SeekToRoot();
-    iter_.SeekRange(range);
+  void Get(const Bounded& range, BoundedValueContainer& container) const {
+    auto iter = QuickNewIterator();
+    iter->SeekToRoot();
+    iter->SeekRange(range);
     //std::cout << iter.ToString() << std::endl;
     auto bound = std::make_shared<RealBounded>(range.Min(), range.Max());
-    iter_.GetBufferOnRoute(container, bound);
+    iter->GetBufferOnRoute(container, bound);
+    delete iter;
+  }
+  void GetKey(const Slice& key, BoundedValueContainer& container) const {
+    auto iter = QuickNewIterator();
+    iter->SeekToRoot();
+    auto bound = std::make_shared<RealBounded>(key, key);
+    iter->SeekRange(*bound);
+    //std::cout << iter.ToString() << std::endl;
+    iter->QuickGetBufferOnRoute(container, key);
+    delete iter;
   }
   void UpdateStatistics(std::shared_ptr<BoundedValue> value, uint32_t label, int64_t diff) {
     iter_.SeekToRoot();

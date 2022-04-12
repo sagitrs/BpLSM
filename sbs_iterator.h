@@ -59,6 +59,14 @@ struct Coordinates {
       }
     }
   }
+  void GetCovers(BoundedValueContainer& results, const Slice& key) {
+    auto& buffer = node_->level_[height_]->buffer_;
+    for (auto i = buffer.begin(); i != buffer.end(); ++i) {
+      auto& v = *i;
+      if (v->Min().compare(key) <= 0 && key.compare(v->Max()) <= 0)
+        results.Add(*i);
+    }
+  }
   std::shared_ptr<BoundedValue> GetValue(uint64_t id) {
     auto& buffer = node_->level_[height_]->buffer_;
     for (auto i = buffer.begin(); i != buffer.end(); ++i)
@@ -126,6 +134,9 @@ struct CoordinatesStack : private std::vector<Coordinates> {
   void SetToIterator(const CoordinatesStackIterator& iter) { Resize(iter.CurrentCursor() + 1); }
   std::shared_ptr<CoordinatesStackIterator> NewIterator() const { 
     return std::make_shared<CoordinatesStackIterator>(const_cast<CoordinatesStack*>(this)); 
+  }
+  CoordinatesStackIterator* QuickNewIterator() const {
+    return new CoordinatesStackIterator(const_cast<CoordinatesStack*>(this));
   }
 };
 
@@ -327,7 +338,13 @@ struct SBSIterator : public Printable {
  private:
  public:
   // Get all the values on the path that are overlap with the given range.
-  void GetBufferOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range) {
+  void QuickGetBufferOnRoute(BoundedValueContainer& results, const Slice& key) const {
+    auto iter = s_.QuickNewIterator();
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next())
+      iter->Current().GetCovers(results, key);
+    delete iter;
+  }
+  void GetBufferOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range) const {
     auto iter = s_.NewIterator();
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       iter->Current().GetRanges(results, range);
