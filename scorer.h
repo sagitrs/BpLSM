@@ -54,10 +54,12 @@ struct Scorer {
   virtual double ValueScore(std::shared_ptr<BoundedValue> value) { return ValueCalculate(value) / Capacity(); }
   bool isUpdated() const { return is_updated_; }
  
+  virtual void TreeInit() {}
   virtual double ValueCalculate(std::shared_ptr<BoundedValue> value) { return 1; }
   virtual double Capacity() { return Width(); }
   virtual double Calculate() {
     double score = 0;
+    TreeInit();
     for (auto value : Buffer())
       score += ValueCalculate(value);
     return score / Capacity();
@@ -66,10 +68,10 @@ struct Scorer {
  protected:
   void SetNode(std::shared_ptr<SBSNode> node, size_t height) { node_ = node; height_ = height; }
   size_t Height() const { return height_; }
-  size_t Width() const { 
-    size_t res = node_->Width(height_); 
-    if (res < Options()->MinWidth())
-      res = node_->GeneralWidth(height_, 2);
+  size_t Width(size_t depth = 1) const { 
+    size_t res = node_->GeneralWidth(height_, depth); 
+    //if (res < Options()->MinWidth())
+    //  res = node_->GeneralWidth(height_, 2);
     return res;
   }
   BoundedValueContainer& Buffer() const { return node_->level_[height_]->buffer_; }

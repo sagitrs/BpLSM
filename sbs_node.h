@@ -61,8 +61,7 @@ struct SBSNode : public Printable {
     return next;
   }
   std::shared_ptr<LevelNode> LevelAt(size_t height) const { return level_[height]; }
- private:
-  void SetNext(size_t k, SBSP next) { level_[k]->next_ = next; }
+ public:
   size_t Width(size_t height) const {
     if (height == 0) return 0;
     SBSP ed = Next(height);
@@ -97,6 +96,8 @@ struct SBSNode : public Printable {
         return 1;
     return 0;
   }
+ private:
+  void SetNext(size_t k, SBSP next) { level_[k]->next_ = next; }
   bool Overlap(size_t height, const Bounded& range) const {
     for (auto r : level_[height]->buffer_)
       if (r->Compare(range) == BOverlap) return true;

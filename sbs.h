@@ -68,8 +68,8 @@ struct SBSkiplist {
   void GetKey(const Slice& key, BoundedValueContainer& container) const {
     auto iter = QuickNewIterator();
     iter->SeekToRoot();
-    auto bound = std::make_shared<RealBounded>(key, key);
-    iter->SeekRange(*bound);
+    RealBounded bound(key, key);
+    iter->SeekRange(bound);
     //std::cout << iter.ToString() << std::endl;
     iter->QuickGetBufferOnRoute(container, key);
     delete iter;
@@ -184,19 +184,20 @@ struct SBSkiplist {
     auto st = iter_.Current(); st.JumpDown();
     auto ed = iter_.Current(); ed.JumpNext(); ed.JumpDown();
     // in a special case, too few children in this level.
+    /*
     if (height >= 2 && iter_.Current().Width() < options_->MinWidth()) {
       for (iter_.Dive(); iter_.Valid() && !(iter_.Current() == ed); iter_.Next()) {
         iter_.GetBufferInCurrent(base_buffer);
       }
       st.JumpDown(); ed.JumpDown();
-    }
+    }*/
 
     for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
       auto& l0buffer = c.node_->LevelAt(0)->buffer_;
       if (l0buffer.size() == 0) continue;
       auto l0file = l0buffer.at(0);
       //auto pacesster
-      
+      if (base_buffer.Compare(*l0file) != BOverlap) continue;
       if (height == 1) {
         child_buffer.push_back(l0file);
         l0guards.push_back(l0file);
@@ -205,10 +206,19 @@ struct SBSkiplist {
       }
     }
   }
-  double PickFilesByScore(int height, std::shared_ptr<Scorer> scorer, double baseline,
+  double PickFilesByScoreInHeight(int height, std::shared_ptr<Scorer> scorer, double baseline,
                           BoundedValueContainer* containers = nullptr) {
     iter_.SeekToRoot();
     double max_score = iter_.SeekScoreInHeight(height, scorer, baseline, true);
+    //height = iter_.Current().height_;
+    if (containers)
+      PickFilesByIterator(scorer, containers);
+    return max_score;
+  }
+  double PickFilesByScore(std::shared_ptr<Scorer> scorer, double baseline,
+                          BoundedValueContainer* containers = nullptr) {
+    iter_.SeekToRoot();
+    double max_score = iter_.SeekScore(scorer, baseline, true);
     //height = iter_.Current().height_;
     if (containers)
       PickFilesByIterator(scorer, containers);
@@ -254,22 +264,24 @@ struct SBSkiplist {
       auto height = node->Height();
       map.emplace_back();
       std::vector<NodeStatus>& lns = *map.rbegin();
-      for (Coordinates c = iter->Current(); c.height_ < height; c.height_ ++) {
+      for (int h = 0; h < height; h ++) {
         lns.emplace_back(); NodeStatus& status = *lns.rbegin();//NodeStatus status;
-        iter->SeekNode(c);
+        //iter->SeekNode(c);
         BoundedValueContainer children;
-        iter->GetChildGuardInCurrent(children);
-        for (auto value : c.Buffer()) {
+        node->GetChildGuard(h, &children);
+        //iter->GetChildGuardInCurrent(children);
+        auto& buffer = node->LevelAt(h)->buffer_;
+        for (auto value : buffer) {
           NodeStatus::ValueStatus vs;
-          vs.width_ = iter->GetValueWidth(value, children);
+          vs.width_ = children.GetValueWidth(value);
           vs.size_ = value->Size();
           vs.id_ = value->Identifier();
           status.vs_.push_back(vs);
         }
-        c.Buffer().GetStringSnapshot(status.ns_);
+        buffer.GetStringSnapshot(status.ns_);
         status.width_ = children.size();
         //lns.push_back(status);
-        iter->SeekNode(Coordinates(node, 0));
+        //iter->SeekNode(Coordinates(node, 0));
       }
       if (height > maxh) maxh = height;
     }

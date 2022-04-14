@@ -127,6 +127,14 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
         std::to_string(operator[](i)->Identifier())
       );
   }
+  size_t GetValueWidth(std::shared_ptr<BoundedValue> value) {
+    Slice a(value->Min()), b(value->Max());
+    size_t width = 1;
+    for (auto & child : *this)
+      if (value->Include(*child) == BInclude)
+        width ++;
+    return width;
+  }
  private:
   const BoundedValueContainerBaseType::const_iterator Locate(uint64_t id) const {
     for (auto iter = begin(); iter != end(); ++iter) 
@@ -135,6 +143,7 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
     return end();
   } 
   
+
 };
 
 }
