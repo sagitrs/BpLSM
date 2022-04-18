@@ -340,7 +340,7 @@ struct SBSIterator : public Printable {
   // Get all the values on the path that are overlap with the given range.
   void QuickGetBufferOnRoute(BoundedValueContainer& results, const Slice& key) const {
     auto iter = s_.QuickNewIterator();
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next())
+    for (iter->SeekToLast(); iter->Valid(); iter->Prev())
       iter->Current().GetCovers(results, key);
     delete iter;
   }

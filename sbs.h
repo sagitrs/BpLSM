@@ -74,7 +74,7 @@ struct SBSkiplist {
     iter->QuickGetBufferOnRoute(container, key);
     delete iter;
   }
-  void UpdateStatistics(std::shared_ptr<BoundedValue> value, uint32_t label, int64_t diff) {
+  void UpdateStatistics(std::shared_ptr<BoundedValue> value, uint32_t label, int64_t diff, int64_t time) {
     iter_.SeekToRoot();
     iter_.SeekRange(*value);
     auto target = iter_.SeekValueInRoute(value->Identifier());
@@ -82,8 +82,8 @@ struct SBSkiplist {
       // file is deleted when bversion is unlocked.
       return;
     }
-    Statistics::TypeTime now = options_->NowTimeSlice();
-    target->UpdateStatistics(label, diff, now);
+    //Statistics::TypeTime now = options_->NowTimeSlice();
+    target->UpdateStatistics(label, diff, time);
     iter_.SetRouteStatisticsDirty();
     //iter_.UpdateRouteHottest(target);
   }
@@ -392,7 +392,7 @@ struct SBSkiplist {
   std::string ToString() const {
     std::stringstream ss;
     PrintList(ss);
-    //PrintStatistics(ss);
+    PrintStatistics(ss);
     //PrintSimple(ss);
     //PrintStatistics(ss);
     return ss.str();
