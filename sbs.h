@@ -422,6 +422,14 @@ struct SBSkiplist {
       return 0;
     return 1;
   }
+
+  void ClearHottest() {
+    for (auto node = head_; node != nullptr; node = node->Next(0)) {
+      size_t height = node->Height();
+      for (size_t h = 1; h < height; ++h)
+        node->LevelAt(h)->table_.hottest_ = nullptr;
+    }
+  }
 };
 
 }

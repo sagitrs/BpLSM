@@ -112,7 +112,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 
 // Statistics args: 
  private:
-  size_t time_slice_ = 15 * 1000 * 1000;
+  size_t time_slice_ = 60 * 1000 * 1000;
   size_t time_count_ = 10;
   size_t time_slice_before_merge_ = 2;
   double B = 0.1, I = 0.9, D = 0.0;
@@ -147,7 +147,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 };
 
 struct DelineatorOptions : public StatisticsOptions {
-  virtual uint64_t TimeSliceMicroSecond() const override { return 15 * 1000 * 1000; }
+  virtual uint64_t TimeSliceMicroSecond() const override { return 60 * 1000 * 1000; }
   virtual uint64_t TimeSliceMaximumSize() const override { return 25; }
 
   // Waiting time before merging records.

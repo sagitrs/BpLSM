@@ -16,12 +16,16 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
   bool stats_dirty_;
   std::shared_ptr<Statistics> stats_;
   void SetStatsDirty() { stats_dirty_ = true; }
+  std::shared_ptr<BoundedValue> GetOne() const {
+    if (size() != 1) return nullptr;
+    return *begin();
+  } 
   void UpdateOneFileStatistics(
     Statistable::TypeLabel label, 
     Statistable::TypeData diff, 
     Statistable::TypeTime time) {
     if (size() != 1) return;
-    std::shared_ptr<BoundedValue> vp = *begin();
+    std::shared_ptr<BoundedValue> vp = GetOne();
     if (vp) vp->UpdateStatistics(label, diff, time);
   }
   std::shared_ptr<Statistics> GetStatistics() {
