@@ -57,6 +57,7 @@ struct Statistable {
 struct Identifiable {
   virtual uint64_t Identifier() const = 0;
   virtual uint64_t Size() const = 0;
+  virtual void* Value() const = 0;
   bool operator ==(const Identifiable& obj) const { return Identifier() == obj.Identifier(); }
 };
 
