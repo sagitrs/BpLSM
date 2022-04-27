@@ -12,7 +12,7 @@ struct BFile : virtual public Bounded, virtual public Identifiable,
  public:
   // for deletion only.
   BFile(leveldb::FileMetaData* f)
-  : Statistics(nullptr),
+  : Statistics(),
     deleted_level_(-1),
     file_meta_(f) { f->refs++; } 
   BFile(leveldb::FileMetaData* f, const Statistics& init) 

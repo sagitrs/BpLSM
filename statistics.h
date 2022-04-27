@@ -135,16 +135,18 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
 };
 struct Statistics : virtual public Printable {
  private:
-  std::shared_ptr<StatisticsOptions> options_;
+  bool never_use_it_;
+  StatisticsOptions options_;
   TTLQueue queue_;
   Counter history_;
  public:
- // a null statistics. neve use it.
-  Statistics(std::shared_ptr<StatisticsOptions> options) : options_(nullptr), queue_(0, 0), history_() { assert(options == nullptr); }
+ // a null statistics. never use it.
+  Statistics() : never_use_it_(true),
+    options_(), queue_(0, 0), history_() {}
  // 
-  Statistics(std::shared_ptr<StatisticsOptions> options, Statistable::TypeTime time) 
-  : options_(options), 
-    queue_(options_->TimeSliceMaximumSize(), time),
+  Statistics(const StatisticsOptions& options, Statistable::TypeTime time) 
+  : never_use_it_(false), options_(options), 
+    queue_(options_.TimeSliceMaximumSize(), time),
     history_() {}
   Statistics(const Statistics& src) 
   : options_(src.options_),
@@ -162,10 +164,9 @@ struct Statistics : virtual public Printable {
     queue_.Push(time, blank);
   }
   virtual void MergeStatistics(const Statistics& target) {
-    if (!target.options_) return;
     if (target.queue_.ed_time_ > queue_.ed_time_)
       UpdateTime(target.queue_.ed_time_);
-    if (target.queue_.ed_time_ + options_->TimeSliceMaximumSize() > queue_.ed_time_)
+    if (target.queue_.ed_time_ + options_.TimeSliceMaximumSize() > queue_.ed_time_)
       queue_.Merge(target.queue_);
     history_ += target.history_;
   }

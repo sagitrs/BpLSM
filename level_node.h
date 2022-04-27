@@ -29,7 +29,7 @@ struct LevelNode : public Printable {
     
     uint64_t max_runs_;
 
-    VariableTable(std::shared_ptr<StatisticsOptions> stat_options) :
+    VariableTable(const StatisticsOptions& stat_options) :
       //stats_dirty_(true),
       stats_(nullptr), 
       update_time_(0),
@@ -62,7 +62,7 @@ struct LevelNode : public Printable {
   VariableTable table_;
 
   // Build blank node.
-  LevelNode(std::shared_ptr<StatisticsOptions> stat_options, 
+  LevelNode(const StatisticsOptions& stat_options, 
             std::shared_ptr<SBSNode> next) 
   : next_(next), 
     buffer_(), 

@@ -15,16 +15,16 @@ struct SBSkiplist {
   friend struct Scorer;
   typedef BFile* TypeValuePtr;
   typedef SBSNode TypeNode;
-  std::shared_ptr<SBSOptions> options_;
+  SBSOptions options_;
  private:
   std::shared_ptr<TypeNode> head_;
   SBSIterator iter_;
  public:
-  SBSkiplist(std::shared_ptr<SBSOptions> options) 
+  SBSkiplist(const SBSOptions& options) 
   : options_(options),
     head_(std::make_shared<SBSNode>(options_, 6)),
     iter_(head_) {}
-  void Reinsert() { iter_.Reinsert(*options_); }
+  void Reinsert() { iter_.Reinsert(options_); }
   std::shared_ptr<SBSIterator> NewIterator() const { return std::make_shared<SBSIterator>(head_); }
   SBSIterator* QuickNewIterator() const { return new SBSIterator(head_); }
   
@@ -32,8 +32,8 @@ struct SBSkiplist {
     bool state = PutBlocked(value);
     if (!state) {
       BFileVec container;
-      assert(iter_.Current().TestState(*options_) > 0);
-      iter_.Current().SplitNext(*options_, &container);
+      assert(iter_.Current().TestState(options_) > 0);
+      iter_.Current().SplitNext(options_, &container);
       for (auto &v : container) {
         PutBlocked(v);
       }
@@ -41,14 +41,14 @@ struct SBSkiplist {
   }
   bool PutBlocked(BFile* value) {
     iter_.SeekToRoot();
-    bool state = iter_.Add(*options_, value);
+    bool state = iter_.Add(options_, value);
     return state;
     //iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
   }
   
   void AddAll(const BFileVec& container) {
     for (auto range : container)
-      iter_.Add(*options_, range);
+      iter_.Add(options_, range);
   }
   int SeekHeight(const Bounded& range) {
     iter_.SeekToRoot();
@@ -89,7 +89,7 @@ struct SBSkiplist {
   BFile* Pop(const BFile& file, bool auto_reinsert = true) {
     iter_.SeekToRoot();
     //auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    return iter_.Del(*options_, file, auto_reinsert);
+    return iter_.Del(options_, file, auto_reinsert);
   }
   void PickFilesByIteratorOld(std::shared_ptr<Scorer> scorer, BFileVec* containers) {
     //height = iter_.Current().height_;
@@ -103,7 +103,7 @@ struct SBSkiplist {
 
     // get file in current.
     iter_.GetBufferInCurrent(base_buffer);    
-    int rest = options_->MaxCompactionFiles();
+    int rest = options_.MaxCompactionFiles();
     rest -= base_buffer.size();
 
     std::deque<Coordinates> queue;
@@ -139,7 +139,7 @@ struct SBSkiplist {
         }
         double score = scorer->GetScore(iter_.Current().node_, iter_.Current().height_); 
         score += 1.0 / scorer->Capacity();
-        load = (score >= options_->NeedsCompactionScore());
+        load = (score >= options_.NeedsCompactionScore());
       }
 
       //auto pacesetter = iter_.Current().node_->Pacesetter();
@@ -378,13 +378,13 @@ struct SBSkiplist {
     for (iter->SeekToFirst(0); iter->Valid(); iter->Next())
       if (iter->Current().Buffer().size() == 1)
         d.AddStatistics(iter->Current().node_->Guard(), *iter->Current().Buffer().GetStatistics());
-    
+    auto now = options_.NowTimeSlice();
     os << "----------Print KSGet----------" << std::endl;
-    d.PrintTo(os, options_->NowTimeSlice(), KSGetCount);
+    d.PrintTo(os, now, KSGetCount);
     os << "----------Print KSPut----------" << std::endl;
-    d.PrintTo(os, options_->NowTimeSlice(), KSPutCount);
+    d.PrintTo(os, now, KSPutCount);
     os << "----------Print KSIterate----------" << std::endl;
-    d.PrintTo(os, options_->NowTimeSlice(), KSIterateCount);
+    d.PrintTo(os, now, KSIterateCount);
     os << "----------Print Statistics End----------" << std::endl;
   }
  public:

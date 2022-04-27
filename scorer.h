@@ -16,7 +16,7 @@ struct Scorer {
       head_height_ = head->Height();
       auto head_stats = head->GetTreeStatistics(head_height_ - 1);
       global_stats_ = head_stats ? new Statistics(*head_stats) : nullptr;
-      time_ = head->options_->NowTimeSlice();
+      time_ = head->options_.NowTimeSlice();
     }
     ~GlobalStatus() { 
       if (global_stats_)
@@ -88,7 +88,7 @@ struct Scorer {
   BFile* GetHottest(int64_t time) { 
     return node_->GetHottest(height_, time); 
   }
-  std::shared_ptr<SBSOptions> Options() const { return node_->options_; }
+  const SBSOptions& Options() const { return node_->options_; }
   void GetChildren(sagitrs::BFileVec* children) {
     node_->GetChildGuard(height_, children);
   }

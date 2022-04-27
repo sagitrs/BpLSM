@@ -12,8 +12,8 @@
 namespace sagitrs {
 
 BFile* BuildFile(size_t a, size_t b) {
-  static std::shared_ptr<sagitrs::SBSOptions> options = std::make_shared<sagitrs::SBSOptions>();
-  Statistics stats(options, options->NowTimeSlice());
+  static sagitrs::SBSOptions options;
+  Statistics stats(options, options.NowTimeSlice());
   std::string l = std::to_string(a);
   std::string r = std::to_string(b);
   uint64_t v = a * 100 + b;
@@ -27,7 +27,7 @@ BFile* BuildFile(size_t a, size_t b) {
 TEST(SBSTest, Empty) {}
 
 TEST(SBSTest, Simple) {
-  auto options = std::make_shared<sagitrs::SBSOptions>();
+  sagitrs::SBSOptions options;
   sagitrs::SBSkiplist list(options);
   for (size_t i =9; i >= 1; i --) {
     list.Put(BuildFile(i*10+0, i*10+0));

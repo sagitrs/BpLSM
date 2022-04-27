@@ -24,28 +24,28 @@ struct SBSNode : public Printable {
   friend struct Coordinates;
   friend struct Scorer;
  private:
-  std::shared_ptr<SBSOptions> options_;
+  SBSOptions options_;
   bool is_head_;
   BFile* pacesetter_;
   std::vector<std::shared_ptr<InnerNode>> level_;
  public:
   // build head node.
-  SBSNode(std::shared_ptr<SBSOptions> options, size_t height)
+  SBSNode(const SBSOptions& options, size_t height)
   : options_(options), 
     is_head_(true),
     pacesetter_(nullptr),
     level_({}) {
       for (size_t i = 0; i < height; ++i) {
-        level_.push_back(std::make_shared<LevelNode>(std::dynamic_pointer_cast<StatisticsOptions>(options), nullptr));
+        level_.push_back(std::make_shared<LevelNode>(options, nullptr));
       }
       Rebound();
     }
   // build leaf node.
-  SBSNode(std::shared_ptr<SBSOptions> options, SBSP next) 
+  SBSNode(const SBSOptions& options, SBSP next) 
   : options_(options), 
     is_head_(false), 
     pacesetter_(nullptr), 
-    level_({std::make_shared<LevelNode>(std::dynamic_pointer_cast<StatisticsOptions>(options), next)}) {}
+    level_({std::make_shared<LevelNode>(options, next)}) {}
   BFile* Pacesetter() const { return pacesetter_; }
   Slice Guard() const { 
     if (is_head_) return "";

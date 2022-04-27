@@ -53,7 +53,7 @@ struct Coordinates {
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
   void GetRanges(BFileVec& results, std::shared_ptr<Bounded> key = nullptr) {
     auto& buffer = node_->level_[height_]->buffer_;
-    auto now = node_->options_->NowTimeSlice();
+    auto now = node_->options_.NowTimeSlice();
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
       if (key == nullptr || (*i)->Compare(*key) == BOverlap) {
         results.Add(*i);
@@ -356,7 +356,7 @@ struct SBSIterator : public Printable {
       iter->Current().GetRanges(results, range);
     }
     iter->SeekToLast();
-    auto now = head_->options_->NowTimeSlice();
+    auto now = head_->options_.NowTimeSlice();
     for (auto& file: iter->Current().Buffer()) {
       file->UpdateStatistics(KSGetCount, 1, now);
     }
