@@ -25,16 +25,18 @@ struct Coordinates {
   int TestState(const SBSOptions& options) const { return node_->TestState(options, height_); }
   size_t Width() const { return node_->Width(height_); }
   bool Fit(const Bounded& range, bool no_overlap) const { return node_->Fit(height_, range, no_overlap); }
-  std::pair<size_t, SBSNode::ValuePtr> Del(SBSNode::ValuePtr range) const { 
-    return std::pair<size_t, SBSNode::ValuePtr>(height_, node_->Del(height_, range)); 
+  BFile* Del(const BFile& file) const { 
+    return node_->Del(height_, file); 
   }
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) const { node_->Add(options, height_, range); }
-  bool Contains(SBSNode::ValuePtr value) const { return node_->level_[height_]->Contains(value); }
-  bool SplitNext(const SBSOptions& options, BoundedValueContainer* force = nullptr) { 
+  bool Contains(const BFile& value) const { 
+    return node_->level_[height_]->Contains(value); 
+  }
+  bool SplitNext(const SBSOptions& options, BFileVec* force = nullptr) { 
     return node_->SplitNext(options, height_, force); 
   }
   void AbsorbNext(const SBSOptions& options) { node_->AbsorbNext(options, height_); }
-  void GetBufferWithChildGuard(BoundedValueContainer* results, BoundedValueContainer* guards) {
+  void GetBufferWithChildGuard(BFileVec* results, BFileVec* guards) {
     if (results)
       GetRanges(*results, nullptr); 
     if (height_ == 0) 
@@ -42,12 +44,14 @@ struct Coordinates {
     if (guards)
       node_->GetChildGuard(height_, guards);
   }
-  std::shared_ptr<Statistable> GetTreeStatistics() { return node_->GetTreeStatistics(height_); }
-  std::shared_ptr<Statistable> GetNodeStatistics() { return node_->GetNodeStatistics(height_); }
+  const Statistics* GetTreeStatistics() { 
+    return node_->GetTreeStatistics(height_); }
+  const Statistics* GetNodeStatistics() { 
+    return node_->GetNodeStatistics(height_); }
   void SetStatisticsDirty() { node_->level_[height_]->table_.SetDirty(); }
   //bool operator ==(const Coordinates& b) { return node_ == b.node_; }
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
-  void GetRanges(BoundedValueContainer& results, std::shared_ptr<Bounded> key = nullptr) {
+  void GetRanges(BFileVec& results, std::shared_ptr<Bounded> key = nullptr) {
     auto& buffer = node_->level_[height_]->buffer_;
     auto now = node_->options_->NowTimeSlice();
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
@@ -59,7 +63,7 @@ struct Coordinates {
       }
     }
   }
-  void GetCovers(BoundedValueContainer& results, const Slice& key) {
+  void GetCovers(BFileVec& results, const Slice& key) {
     auto& buffer = node_->level_[height_]->buffer_;
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
       auto& v = *i;
@@ -67,15 +71,17 @@ struct Coordinates {
         results.Add(*i);
     }
   }
-  std::shared_ptr<BoundedValue> GetValue(uint64_t id) {
+  BFile* GetValue(uint64_t id) {
     auto& buffer = node_->level_[height_]->buffer_;
     for (auto i = buffer.begin(); i != buffer.end(); ++i)
       if ((*i)->Identifier() == id) 
         return *i;
     return nullptr;
   }
-  BoundedValueContainer& Buffer() { return node_->level_[height_]->buffer_; }
-  std::shared_ptr<BoundedValue> GetHottest(int64_t time) { return node_->GetHottest(height_, time); }
+  BFileVec& Buffer() { return node_->level_[height_]->buffer_; }
+  BFile* GetHottest(int64_t time) { 
+    return node_->GetHottest(height_, time); 
+  }
   LevelNode::VariableTable& Table() { return node_->level_[height_]->table_; }
   std::string ToString() const {
     std::string node = node_->Guard().ToString();
@@ -144,7 +150,7 @@ struct SBSIterator : public Printable {
  private:
   CoordinatesStack s_;
   SBSNode::SBSP head_;
-  std::vector<std::pair<size_t, SBSNode::ValuePtr>> recycler_;
+  //std::vector<std::pair<size_t, SBSNode::ValuePtr>> recycler_;
   std::vector<SBSNode::ValuePtr> reinserter_;
   //std::deque<SBSNode::ValuePtr> reinserter_;
  public:
@@ -227,9 +233,9 @@ struct SBSIterator : public Printable {
   // Find elements on the path that exactly match the target object 
   // (including ranges and values).
   // Assert: Already SeekRange().
-  std::shared_ptr<BoundedValue> SeekValueInRoute(uint64_t id) {
+  BFile* SeekValueInRoute(uint64_t id) {
     auto iter = s_.NewIterator();
-    std::shared_ptr<BoundedValue> res = nullptr;
+    BFile* res = nullptr;
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       res = iter->Current().GetValue(id);
       if (res) {
@@ -334,17 +340,17 @@ struct SBSIterator : public Printable {
     bool state = CheckSplit(options);
     return state;
   }
-  std::vector<std::pair<size_t, SBSNode::ValuePtr>>& Recycler() { return recycler_; }
+  //std::vector<std::pair<size_t, SBSNode::ValuePtr>>& Recycler() { return recycler_; }
  private:
  public:
   // Get all the values on the path that are overlap with the given range.
-  void QuickGetBufferOnRoute(BoundedValueContainer& results, const Slice& key) const {
+  void QuickGetBufferOnRoute(BFileVec& results, const Slice& key) const {
     auto iter = s_.QuickNewIterator();
     for (iter->SeekToLast(); iter->Valid(); iter->Prev())
       iter->Current().GetCovers(results, key);
     delete iter;
   }
-  void GetBufferOnRoute(BoundedValueContainer& results, std::shared_ptr<Bounded> range) const {
+  void GetBufferOnRoute(BFileVec& results, std::shared_ptr<Bounded> range) const {
     auto iter = s_.NewIterator();
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       iter->Current().GetRanges(results, range);
@@ -355,9 +361,9 @@ struct SBSIterator : public Printable {
       file->UpdateStatistics(KSGetCount, 1, now);
     }
   }
-  void GetBufferInCurrent(BoundedValueContainer& results, std::shared_ptr<Bounded> range = nullptr) { s_.Top().GetRanges(results, range); }
+  void GetBufferInCurrent(BFileVec& results, std::shared_ptr<Bounded> range = nullptr) { s_.Top().GetRanges(results, range); }
 
-  void GetChildGuardInCurrent(BoundedValueContainer& results) {
+  void GetChildGuardInCurrent(BFileVec& results) {
     if (s_.Top().height_ == 0) return;
     auto ed = s_.Top(); 
     ed.JumpNext(); 
@@ -368,7 +374,7 @@ struct SBSIterator : public Printable {
         results.push_back(cp);
     }
   }
-  void GetBufferWithChildGuard(Coordinates target, BoundedValueContainer* results) const {
+  void GetBufferWithChildGuard(Coordinates target, BFileVec* results) const {
     //Coordinates target = s_.Top();
     target.GetBufferWithChildGuard(&results[0], &results[1]);
   }
@@ -378,22 +384,25 @@ struct SBSIterator : public Printable {
   // This may recursively trigger a merge operation and possibly a split operation.
   void Reinsert(const SBSOptions& options) {
     //assert(reinserter_.empty());
-    for (auto e : reinserter_) if (e.get() != nullptr) {
-      bool ok = Del_(options, e, false) >= 0;
-      if (ok)
+    for (auto e : reinserter_) if (e != nullptr) {
+      BFile* deleted = Del_(options, *e);
+      //assert(deleted->DeletedLevel() > 0);
+      if (deleted)
         Add(options, e);
+      deleted->SetDeletedLevel(-1);
     }
     reinserter_.clear();
   }
-  bool Del(const SBSOptions& options, SBSNode::ValuePtr range, bool auto_reinsert = true) {
-    int level = Del_(options, range, &auto_reinsert);
+  BFile* Del(const SBSOptions& options, const BFile& file, bool auto_reinsert = true) {
+    BFile* deleted = Del_(options, file);
+    int level = deleted->DeletedLevel();
     if (level == -1) 
-      return 0;
+      return nullptr;
     if (auto_reinsert || level == 0) 
       Reinsert(options);
-    return 1;
+    return deleted;
   }
-  int Del_(const SBSOptions& options, SBSNode::ValuePtr value, bool recycle = true) {
+  BFile* Del_(const SBSOptions& options, const BFile& file) {
     // 1. Delete file in target node.
     // 2. (for inner node) check if split happens. if so, stop here.
     // 3. (for leaf node) check if node became empty. if so, check absorb recursively.
@@ -402,23 +411,25 @@ struct SBSIterator : public Printable {
     //   3. recalculate node status.
     //   4. check if child node is less enough to check absorb recursively.
     // 4. recalculate all nodes' child-state.
-    SeekToRoot(); Slice a(value->Min()), b(value->Max());
-    SeekRange(*value);
-    auto res0 = SeekValueInRoute(value->Identifier());
+    SeekToRoot(); Slice a(file.Min()), b(file.Max());
+    SeekRange(file);
+    auto res0 = SeekValueInRoute(file.Identifier());
     if (res0 == nullptr) 
-      return -1;
+      return nullptr;
     //if (s_.Top().height_ == 0) s_.Top().->UpdateStatistics(DefaultTypeLabel::LeafCount, 1, options.NowTimeSlice());           // inc leaf.
     //SetRouteStatisticsDirty();
 
     auto target = s_.Top();
-    std::pair<size_t, SBSNode::ValuePtr> res = target.Del(value);
-    assert(res.second != nullptr);
+    BFile* res = target.Del(file);
+
+    assert(res != nullptr);
     if (s_.Top().height_ == 0) {
-      res.second->UpdateStatistics(DefaultTypeLabel::LeafCount, -1, options.NowTimeSlice());         // statistics.
+      res->UpdateStatistics(DefaultTypeLabel::LeafCount, -1, options.NowTimeSlice());         // statistics.
       DisableRouteHottest();
     }
     SetRouteStatisticsDirty();
-    if (recycle) recycler_.push_back(res);
+    //deleted = res.second;
+    //if (recycle) recycler_.push_back(res);
 
     // for inner node:
     // check if recursively split is triggered.
@@ -426,7 +437,7 @@ struct SBSIterator : public Printable {
     int state = target.TestState(options);
     if (height > 0 && state > 0 && !target.IsDirty()) {
       CheckSplit(options);
-      return height;
+      return res;
     }
 
     // for leaf node:
@@ -469,7 +480,7 @@ struct SBSIterator : public Printable {
       }
     }
     SeekToRoot();
-    return 0;
+    return res;
   }
 
   virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {
@@ -477,40 +488,7 @@ struct SBSIterator : public Printable {
     for (iter->SeekToFirst(); iter->Valid(); iter->Next())
       snapshot.emplace_back("", iter->Current().ToString());
   }
-  std::shared_ptr<Statistics> GetRouteMergedStatistics() {
-    auto iter = s_.NewIterator();
-    int div = 1;
-    std::shared_ptr<Statistics> sum = nullptr;
-
-    iter->SeekToLast();
-    auto stats = iter->Current().Buffer().GetStatistics();
-    if (stats)
-      sum = std::make_shared<Statistics>(*stats);
-    RealBounded bound = iter->Current().Buffer();
-
-    for (iter->Prev(); iter->Valid(); iter->Prev()) {
-      div *= iter->Current().Width();
-      //auto stats = iter->Current().Buffer().GetStatistics();
-      //if (stats == nullptr) continue;
-      for (auto value : iter->Current().Buffer()) 
-        if (bound.Compare(*value) == BOverlap) {
-          auto s1 = std::dynamic_pointer_cast<Statistable>(value);
-          auto stats = std::dynamic_pointer_cast<Statistics>(s1);
-          if (sum == nullptr) 
-            sum = std::make_shared<Statistics>(*stats);
-          else {
-            auto tmp = std::make_shared<Statistics>(*stats);
-            tmp->ScaleStatistics(DefaultCounterTypeMax, 1, div);
-            sum->MergeStatistics(tmp);
-          }
-      }
-      //iter->Current().GetRanges(results, range);
-    }
-    return sum;
-  }
-
-  //void UpdateGlobalStatistics(uint32_t label, int64_t diff, int time) {}
-};
+  };
 
 
 }  
@@ -543,5 +521,36 @@ struct SBSIterator : public Printable {
       }
     }
   }
+std::shared_ptr<Statistics> GetRouteMergedStatistics() {
+    auto iter = s_.NewIterator();
+    int div = 1;
+
+    iter->SeekToLast();
+    const Statistics& stats = iter->Current().Buffer().GetStatistics();
+    Statistics sum(stats);
+    RealBounded bound = iter->Current().Buffer();
+
+    for (iter->Prev(); iter->Valid(); iter->Prev()) {
+      div *= iter->Current().Width();
+      //auto stats = iter->Current().Buffer().GetStatistics();
+      //if (stats == nullptr) continue;
+      for (auto value : iter->Current().Buffer()) 
+        if (bound.Compare(*value) == BOverlap) {
+          auto s1 = std::dynamic_pointer_cast<Statistable>(value);
+          auto stats = std::dynamic_pointer_cast<Statistics>(s1);
+          if (sum == nullptr) 
+            sum = std::make_shared<Statistics>(*stats);
+          else {
+            auto tmp = std::make_shared<Statistics>(*stats);
+            tmp->ScaleStatistics(DefaultCounterTypeMax, 1, div);
+            sum->MergeStatistics(tmp);
+          }
+      }
+      //iter->Current().GetRanges(results, range);
+    }
+    return sum;
+  }
+
+  //void UpdateGlobalStatistics(uint32_t label, int64_t diff, int time) {}
 
 */

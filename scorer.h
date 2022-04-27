@@ -9,13 +9,18 @@ struct Scorer {
  private:
   struct GlobalStatus {
     size_t head_height_;
-    std::shared_ptr<Statistable> global_stats_;
-    Statistics::TypeTime time_;
+    Statistics* global_stats_;
+    Statistable::TypeTime time_;
     GlobalStatus(std::shared_ptr<SBSNode> head) {
       assert(head->is_head_);
       head_height_ = head->Height();
-      global_stats_ = head->GetTreeStatistics(head_height_ - 1);
+      auto head_stats = head->GetTreeStatistics(head_height_ - 1);
+      global_stats_ = head_stats ? new Statistics(*head_stats) : nullptr;
       time_ = head->options_->NowTimeSlice();
+    }
+    ~GlobalStatus() { 
+      if (global_stats_)
+        delete global_stats_;
     }
   };
   std::shared_ptr<GlobalStatus> status_;
@@ -51,11 +56,11 @@ struct Scorer {
     SetNode(node, height);
     return Calculate();
   }
-  virtual double ValueScore(std::shared_ptr<BoundedValue> value) { return ValueCalculate(value) / Capacity(); }
+  virtual double ValueScore(BFile* value) { return ValueCalculate(value) / Capacity(); }
   bool isUpdated() const { return is_updated_; }
  
   virtual void TreeInit() {}
-  virtual double ValueCalculate(std::shared_ptr<BoundedValue> value) { return 1; }
+  virtual double ValueCalculate(BFile* value) { return 1; }
   virtual double Capacity() { return Width(); }
   virtual double Calculate() {
     double score = 0;
@@ -74,15 +79,17 @@ struct Scorer {
     //  res = node_->GeneralWidth(height_, 2);
     return res;
   }
-  BoundedValueContainer& Buffer() const { return node_->level_[height_]->buffer_; }
+  BFileVec& Buffer() const { return node_->level_[height_]->buffer_; }
   size_t BufferSize() const { return node_->level_[height_]->buffer_.size(); }
   const GlobalStatus& Global() const { return *status_; }
-  std::shared_ptr<Statistable> GetStatistics() { return node_->GetTreeStatistics(height_); }
-  std::shared_ptr<BoundedValue> GetHottest(int64_t time) { 
+  const Statistics& GetStatistics() { 
+    return *node_->GetTreeStatistics(height_); 
+  }
+  BFile* GetHottest(int64_t time) { 
     return node_->GetHottest(height_, time); 
   }
   std::shared_ptr<SBSOptions> Options() const { return node_->options_; }
-  void GetChildren(sagitrs::BoundedValueContainer* children) {
+  void GetChildren(sagitrs::BFileVec* children) {
     node_->GetChildGuard(height_, children);
   }
 };

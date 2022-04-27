@@ -18,7 +18,7 @@ struct Scorer;
 
 struct SBSNode : public Printable {
   typedef std::shared_ptr<SBSNode> SBSP;
-  typedef std::shared_ptr<BoundedValue> ValuePtr;
+  typedef BFile* ValuePtr;
   typedef LevelNode InnerNode;
   friend struct SBSIterator;
   friend struct Coordinates;
@@ -26,7 +26,7 @@ struct SBSNode : public Printable {
  private:
   std::shared_ptr<SBSOptions> options_;
   bool is_head_;
-  std::shared_ptr<BoundedValue> pacesetter_;
+  BFile* pacesetter_;
   std::vector<std::shared_ptr<InnerNode>> level_;
  public:
   // build head node.
@@ -46,7 +46,7 @@ struct SBSNode : public Printable {
     is_head_(false), 
     pacesetter_(nullptr), 
     level_({std::make_shared<LevelNode>(std::dynamic_pointer_cast<StatisticsOptions>(options), next)}) {}
-  std::shared_ptr<BoundedValue> Pacesetter() const { return pacesetter_; }
+  BFile* Pacesetter() const { return pacesetter_; }
   Slice Guard() const { 
     if (is_head_) return "";
     return Pacesetter()->Min(); 
@@ -78,7 +78,7 @@ struct SBSNode : public Printable {
       width ++;
     return width;
   }
-  void GetChildGuard(size_t height, BoundedValueContainer* container) const {
+  void GetChildGuard(size_t height, BFileVec* container) const {
     if (height == 0 || container == nullptr) return;
     SBSP ed = Next(height);
     if (Pacesetter()) container->push_back(Pacesetter());
@@ -160,16 +160,17 @@ struct SBSNode : public Printable {
     if (pacesetter_ == nullptr || Guard().compare(range->Min()) > 0)
       pacesetter_ = range;
   }
-  ValuePtr Del(size_t height, ValuePtr range) {
+  BFile* Del(size_t height, const BFile& range) {
     auto res = level_[height]->Del(range);
-    if (Guard().compare(range->Min()) == 0)
+    if (Guard().compare(range.Min()) == 0)
       Rebound();
+    res->SetDeletedLevel(height);
     return res;
   }
   void DecHeight() { level_.pop_back(); }
-  std::shared_ptr<Statistable> GetNodeStatistics(size_t height) { return level_[height]->buffer_.GetStatistics(); }
+  const Statistics* GetNodeStatistics(size_t height) { return level_[height]->buffer_.GetStatistics(); }
   
-  ValuePtr GetHottest(size_t height, int64_t time) {
+  BFile* GetHottest(size_t height, int64_t time) {
     if (height == 0) 
       return level_[0]->buffer_.GetOne(); 
     
@@ -186,25 +187,32 @@ struct SBSNode : public Printable {
     
     return h;
   }
-  std::shared_ptr<Statistable> GetTreeStatistics(size_t height) {
+  const Statistics* GetTreeStatistics(size_t height) {
     if (height == 0) 
-      return level_[0]->buffer_.GetOne(); 
+      return level_[0]->buffer_.GetStatistics();
     
-    auto s = level_[height]->table_.TreeStatistics();
-    if (!level_[height]->table_.isDirty())
-      return s;
+    Statistics* s = level_[height]->table_.stats_;
+    if (!s) return s;
     
-    s->CopyStatistics(GetTreeStatistics(height - 1));
-    for (SBSP i = Next(height - 1); i != Next(height); i = i->Next(height - 1)) 
-      s->MergeStatistics(i->GetTreeStatistics(height - 1));
-    s->MergeStatistics(GetNodeStatistics(height));
+    std::vector<const Statistics*> ss;
+    ss.push_back(GetTreeStatistics(height - 1));
+    for (SBSP i = Next(height - 1); i != Next(height); i = i->Next(height - 1))
+      ss.push_back(i->GetTreeStatistics(height - 1));
+    ss.push_back(GetNodeStatistics(height));
+
+    for (auto stat : ss) if (stat) {
+      if (s == nullptr) 
+        s = new Statistics(*stat);
+      else 
+        s->MergeStatistics(*stat);
+    }
     
     level_[height]->table_.SetDirty(false);
     return s;
   }
  private:
  public:
-  bool SplitNext(const SBSOptions& options, size_t height, BoundedValueContainer* force = nullptr) {
+  bool SplitNext(const SBSOptions& options, size_t height, BFileVec* force = nullptr) {
     if (height == 0) {
       auto &a = level_[0]->buffer_;
       assert(a.size() == 2);
@@ -212,7 +220,7 @@ struct SBSNode : public Printable {
       auto v = *a.rbegin();
       tmp->Add(options, 0, v);
       SetNext(0, tmp);
-      Del(0, v);
+      Del(0, *v);
       return 1;
     } else {
       //assert(!level_[height]->isDirty());
@@ -245,10 +253,10 @@ struct SBSNode : public Printable {
           }
         }
         for (auto& v : tmp->buffer_)
-          level_[height]->Del(v);
+          level_[height]->Del(*v);
         if (force)
           for (auto& v : *force)
-            level_[height]->Del(v);
+            level_[height]->Del(*v);
       }
       middle->level_.push_back(tmp); 
       SetNext(height, middle);

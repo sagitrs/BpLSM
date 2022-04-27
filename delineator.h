@@ -9,19 +9,19 @@ struct Delineator {
  private:
   struct RangedStatistics {
     std::string guard_;
-    std::shared_ptr<Statistable> stats_;
+    Statistics stats_;
    public:
-    RangedStatistics(const Slice& guard, std::shared_ptr<Statistable> stats) : guard_(guard.ToString()), stats_(stats) {}
+    RangedStatistics(const Slice& guard, const Statistics& stats) : guard_(guard.ToString()), stats_(stats) {}
   };
   std::vector<RangedStatistics> vec_;
  public:
   Delineator() : vec_() {}
   virtual ~Delineator() {}
-  void AddStatistics(const Slice& guard, std::shared_ptr<Statistable> stats) { 
+  void AddStatistics(const Slice& guard, const Statistics& stats) { 
     vec_.emplace_back(guard, stats); 
   }
   int64_t GetStatistics(size_t k, uint32_t label, int64_t time) { 
-    return vec_[k].stats_ ? vec_[k].stats_->GetStatistics(label, time) : 0; 
+    return vec_[k].stats_.GetStatistics(label, time); 
   }
   void GetAllStatistics(std::vector<int64_t>& data, uint32_t label, size_t time) {
     for (size_t i = 0; i < vec_.size(); ++i)

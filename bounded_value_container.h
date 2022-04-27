@@ -4,20 +4,24 @@
 #include <memory>
 #include <set>
 #include "statistics.h"
-
+#include "bfile.h"
 namespace sagitrs {
 
+typedef std::vector<BFile*> BFileVecBase;
 
-typedef std::vector<std::shared_ptr<BoundedValue>> BoundedValueContainerBaseType;
-
-struct BoundedValueContainer : public BoundedValueContainerBaseType, 
-                               public RealBounded,
-                               public Printable {
-  bool stats_dirty_;
-  std::shared_ptr<Statistics> stats_;
-  void SetStatsDirty() { stats_dirty_ = true; }
-  std::shared_ptr<BoundedValue> GetOne() const {
-    if (size() != 1) return nullptr;
+struct BFileVec : public BFileVecBase, 
+                  public RealBounded,
+                  public Printable {
+  //bool stats_dirty_;
+  Statistics* stats_;
+  void SetStatsDirty() { 
+    if (stats_) {
+      delete stats_; 
+      stats_ = nullptr;
+    } 
+  }
+  BFile* GetOne() const {
+    if (BFileVecBase::size() != 1) return nullptr;
     return *begin();
   } 
   void UpdateOneFileStatistics(
@@ -25,55 +29,55 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
     Statistable::TypeData diff, 
     Statistable::TypeTime time) {
     if (size() != 1) return;
-    std::shared_ptr<BoundedValue> vp = GetOne();
+    auto vp = GetOne();
     if (vp) vp->UpdateStatistics(label, diff, time);
   }
-  std::shared_ptr<Statistics> GetStatistics() {
-    if (stats_dirty_) {
-      stats_ = nullptr;
-      for (auto i = begin(); i != end(); ++i) {
-        if (stats_) stats_->MergeStatistics(*i);
-        else {
-          auto sa = std::dynamic_pointer_cast<Statistable>(*i);
-          auto st = std::dynamic_pointer_cast<Statistics>(sa);
-          stats_ = std::make_shared<Statistics>(*st);
-        }
-      }
-      stats_dirty_ = false;
+  Statistics* GetStatistics() {
+    if (size() == 1) return GetOne();
+    if (!stats_) SetStatsDirty();
+    for (auto i = begin(); i != end(); ++i) {
+      if (stats_) 
+        stats_->MergeStatistics(**i);
+      else
+        stats_ = new Statistics(**i);
     }
     return stats_;
   }
   //-----------------------------------------------------------------
-  BoundedValueContainer() :   // Copy function.
-    BoundedValueContainerBaseType(),
-    RealBounded("Undefined", "Undefined") {}
+  BFileVec() :   // Copy function.
+    BFileVecBase(),
+    RealBounded("Undefined", "Undefined"),
+    stats_(nullptr) {}
 
-  BoundedValueContainer(const BoundedValueContainerBaseType& container) :   // Copy function.
-    BoundedValueContainerBaseType(container),
-    RealBounded("Undefined", "Undefined") { Rebound(); }
+  BFileVec(const BFileVecBase& container) :   // Copy function.
+    BFileVecBase(container),
+    RealBounded("Undefined", "Undefined"),
+    stats_(nullptr) { Rebound(); }
 
-  static int StaticCompare(const std::shared_ptr<BoundedValue> &a, const std::shared_ptr<BoundedValue> &b) {
-    int cmp = a->Min().compare(b->Min());
-    if (cmp == 0) cmp = a->Max().compare(b->Max());
+  ~BFileVec() { if (stats_) delete stats_; }
+
+  static int StaticCompare(const BFile &a, const BFile &b) {
+    int cmp = a.Min().compare(b.Min());
+    if (cmp == 0) cmp = a.Max().compare(b.Max());
     return cmp;
   }
-  void Add(std::shared_ptr<BoundedValue> value) { 
+  void Add(BFile* value) { 
     // bound adjust.
     if (size() > 0)
       RealBounded::Extend(*value);
     else
       RealBounded::Rebound(*value);
     // statistics adjust.
-    stats_dirty_ = true;
+    SetStatsDirty();
 
     if (empty()) 
       push_back(value);
-    else if (StaticCompare(value, *begin()) <= 0)
+    else if (StaticCompare(*value, **begin()) <= 0)
       insert(begin(), value);
     else {
       auto prev = begin();
       for (auto i = prev+1; i != end(); ++i)
-        if (StaticCompare(*prev, value) <= 0 && StaticCompare(value, *i) <= 0) {
+        if (StaticCompare(**prev, *value) <= 0 && StaticCompare(*value, **i) <= 0) {
           insert(i, value);
           return;
         } else {
@@ -82,16 +86,16 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
       push_back(value);
     } 
   }
-  void AddAll(const BoundedValueContainer& b) {
+  void AddAll(const BFileVec& b) {
     for (auto value : b) { Add(value); }
     // statistics adjust.
-    stats_dirty_ = true;
+    SetStatsDirty();
   }
-  std::shared_ptr<BoundedValue> Del(uint64_t id) {
+  BFile* Del(uint64_t id) {
     auto iter = Locate(id);
     if (iter == end()) return nullptr;
     // statistics adjust.
-    stats_dirty_ = true;
+    SetStatsDirty();
 
     auto res = *iter;
     erase(iter);
@@ -99,7 +103,7 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
     return res;
   }
   bool Contains(uint64_t id) const { return Locate(id) != end(); }
-  std::shared_ptr<BoundedValue> Get(uint64_t id) { return *Locate(id); }
+  BFile* Get(uint64_t id) { return *Locate(id); }
   bool Overlap() const {
     auto i = begin();
     auto prev = i;
@@ -131,7 +135,7 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
         std::to_string(operator[](i)->Identifier())
       );
   }
-  size_t GetValueWidth(std::shared_ptr<BoundedValue> value) {
+  size_t GetValueWidth(BFile* value) {
     Slice a(value->Min()), b(value->Max());
     size_t width = 1;
     for (auto & child : *this)
@@ -140,7 +144,7 @@ struct BoundedValueContainer : public BoundedValueContainerBaseType,
     return width;
   }
  private:
-  const BoundedValueContainerBaseType::const_iterator Locate(uint64_t id) const {
+  const BFileVecBase::const_iterator Locate(uint64_t id) const {
     for (auto iter = begin(); iter != end(); ++iter) 
     if ((*iter)->Identifier() == id) 
       return iter;

@@ -4,29 +4,25 @@
 
 #include "gtest/gtest.h"
 #include "sbs.h"
+#include "bfile.h"
 #include "bounded.h"
 #include "bounded_value_container.h"
 
-namespace leveldb {
 
-struct TempKV : virtual public sagitrs::BoundedValue, virtual public sagitrs::Statistics {
-  sagitrs::RealBounded bound_;
-  uint64_t value_;
-  TempKV(std::shared_ptr<sagitrs::StatisticsOptions> options, const Slice& a, const Slice& b, uint64_t value) 
-  : sagitrs::Statistics(options, options->NowTimeSlice()), 
-    bound_(a, b), value_(value) {}
-  virtual Slice Min() const override { return bound_.Min(); }
-  virtual Slice Max() const override { return bound_.Max(); }
-  virtual uint64_t Identifier() const override { return value_; }
+namespace sagitrs {
 
-  static std::shared_ptr<TempKV> FactoryBuild(size_t a, size_t b) {
-    static std::shared_ptr<sagitrs::SBSOptions> options = std::make_shared<sagitrs::SBSOptions>();
-    std::string l = std::to_string(a);
-    std::string r = std::to_string(b);
-    uint64_t v = a * 100 + b;
-    return std::make_shared<TempKV>(options, l, r, v);
-  }
-};
+BFile* BuildFile(size_t a, size_t b) {
+  static std::shared_ptr<sagitrs::SBSOptions> options = std::make_shared<sagitrs::SBSOptions>();
+  Statistics stats(options, options->NowTimeSlice());
+  std::string l = std::to_string(a);
+  std::string r = std::to_string(b);
+  uint64_t v = a * 100 + b;
+  leveldb::FileMetaData * f = new leveldb::FileMetaData();
+  f->number = v;
+  f->smallest = leveldb::InternalKey(l, 0, leveldb::ValueType::kTypeValue);
+  f->largest = leveldb::InternalKey(r, 0, leveldb::ValueType::kTypeValue);
+  return new BFile(f, stats);
+}
 
 TEST(SBSTest, Empty) {}
 
@@ -34,56 +30,41 @@ TEST(SBSTest, Simple) {
   auto options = std::make_shared<sagitrs::SBSOptions>();
   sagitrs::SBSkiplist list(options);
   for (size_t i =9; i >= 1; i --) {
-    list.Put(TempKV::FactoryBuild(i*10+0, i*10+0));
+    list.Put(BuildFile(i*10+0, i*10+0));
     //std::cout << list.ToString() << std::endl;
-    list.Put(TempKV::FactoryBuild(i*10+9, i*10+9));
+    list.Put(BuildFile(i*10+9, i*10+9));
     //std::cout << list.ToString() << std::endl;
   }
   for (size_t i = 1; i <= 9; ++i) {
-    list.Put(TempKV::FactoryBuild(i*10+0, i*10+9));
+    list.Put(BuildFile(i*10+0, i*10+9));
     //std::cout << list.ToString() << std::endl;
   }
-  Slice target_key("70");
-  TempKV kv(options, target_key, target_key, 12345678);
-  sagitrs::BoundedValueContainer container[3];
-  list.Get(kv, container[0]);
+  RealBounded bound("70", "70");
+  sagitrs::BFileVec container[3];
+  list.Lookup(bound, container[0]);
 
   ASSERT_EQ(container[0].size(), 2);
   //---------------------------------------
-  container[0].clear();
-  auto scorer = std::make_shared<sagitrs::BVersionScorer>();
-  int height = -1;
-  list.PickFilesByScore(scorer, 0, height, &container[0]);
-  std::cout << "PickCompaction=[" << container[0].ToString() << "||" << container[1].ToString() << "]" << std::endl;
-  //---------------------------------------
   for (size_t i = 1; i <= 8; ++i) {
-    list.Put(TempKV::FactoryBuild(60+i, 60+i));
-    list.Put(TempKV::FactoryBuild(70+i, 70+i));
+    list.Put(BuildFile(60+i, 60+i));
+    list.Put(BuildFile(70+i, 70+i));
     //std::cout << list.ToString() << std::endl;
   }
   //std::cout << list.ToString() << std::endl;
   //return;
-  list.Del(TempKV::FactoryBuild(50, 59));
+  BFile* d = nullptr;
+  d = list.Pop(*BuildFile(50, 59));
   //std::cout << list.ToString() << std::endl;
-  list.Del(TempKV::FactoryBuild(60, 69));
+  // i know there is memory leak here...
+  d = list.Pop(*BuildFile(60, 69));
   //std::cout << list.ToString() << std::endl;
   //---------------------------------------
-  list.Del(TempKV::FactoryBuild(29, 29));
+  d = list.Pop(*BuildFile(29, 29));
   //std::cout << list.ToString() << std::endl;
-  list.Del(TempKV::FactoryBuild(20, 20));
+  d = list.Pop(*BuildFile(20, 20));
   //std::cout << list.ToString() << std::endl;
-
-  for (size_t i = 0; i < 10000; ++i) {
-    uint64_t k = random() % 100;
-    sagitrs::BoundedValueContainer container;
-    auto key = TempKV::FactoryBuild(k,k);
-    list.Get(*key, container, scorer);
-    if (!container.empty())
-      list.UpdateStatistics(container[0], sagitrs::KSGetCount, 1);
-  }
-  std::cout << list.ToString() << std::endl;
   //---------------------------------------
-  list.Del(TempKV::FactoryBuild(20, 29));
+  d = list.Pop(*BuildFile(20, 29));
   std::cout << list.ToString() << std::endl;
 }
 

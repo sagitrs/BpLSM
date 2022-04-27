@@ -37,7 +37,6 @@ struct Printable {
     return res + suffix;
   } 
 };
-
 struct Statistable {
   typedef uint32_t TypeLabel;
   typedef int64_t TypeData;
@@ -47,8 +46,8 @@ struct Statistable {
   
   virtual void UpdateStatistics(TypeLabel label, TypeData diff, TypeTime time) = 0;
   virtual TypeData GetStatistics(TypeLabel type, TypeTime time) = 0;
-  virtual void MergeStatistics(std::shared_ptr<Statistable> target) = 0;  
-  virtual void CopyStatistics(std::shared_ptr<Statistable> target) = 0;
+  virtual void MergeStatistics(const Statistable& target) = 0;  
+  virtual void CopyStatistics(const Statistable& target) = 0;
   virtual void ScaleStatistics(TypeLabel label, int numerator, int denominator) = 0;
   
   virtual ~Statistable() {}
@@ -91,13 +90,6 @@ struct Bounded {
     return Min().compare(target.Min()) < 0;
   }
 };
-
-struct BoundedValue : virtual public Bounded, 
-                      virtual public Identifiable, 
-                      virtual public Statistable 
-{
-  
-}; 
 
 struct RealBounded : virtual public Bounded {
  private:

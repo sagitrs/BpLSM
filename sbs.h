@@ -13,7 +13,7 @@ namespace sagitrs {
 struct Scorer;
 struct SBSkiplist {
   friend struct Scorer;
-  typedef std::shared_ptr<BoundedValue> TypeValuePtr;
+  typedef BFile* TypeValuePtr;
   typedef SBSNode TypeNode;
   std::shared_ptr<SBSOptions> options_;
  private:
@@ -28,10 +28,10 @@ struct SBSkiplist {
   std::shared_ptr<SBSIterator> NewIterator() const { return std::make_shared<SBSIterator>(head_); }
   SBSIterator* QuickNewIterator() const { return new SBSIterator(head_); }
   
-  void Put(TypeValuePtr value) {
+  void Put(BFile* value) {
     bool state = PutBlocked(value);
     if (!state) {
-      BoundedValueContainer container;
+      BFileVec container;
       assert(iter_.Current().TestState(*options_) > 0);
       iter_.Current().SplitNext(*options_, &container);
       for (auto &v : container) {
@@ -39,15 +39,14 @@ struct SBSkiplist {
       }
     }
   }
-  bool PutBlocked(TypeValuePtr value) {
+  bool PutBlocked(BFile* value) {
     iter_.SeekToRoot();
-    auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    bool state = iter_.Add(*options_, target);
+    bool state = iter_.Add(*options_, value);
     return state;
     //iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
   }
   
-  void AddAll(const BoundedValueContainer& container) {
+  void AddAll(const BFileVec& container) {
     for (auto range : container)
       iter_.Add(*options_, range);
   }
@@ -56,7 +55,7 @@ struct SBSkiplist {
     iter_.SeekRange(range, true);
     return iter_.Current().height_;
   }
-  void Get(const Bounded& range, BoundedValueContainer& container) const {
+  void Lookup(const Bounded& range, BFileVec& container) const {
     auto iter = QuickNewIterator();
     iter->SeekToRoot();
     iter->SeekRange(range);
@@ -65,7 +64,7 @@ struct SBSkiplist {
     iter->GetBufferOnRoute(container, bound);
     delete iter;
   }
-  void GetKey(const Slice& key, BoundedValueContainer& container) const {
+  void LookupKey(const Slice& key, BFileVec& container) const {
     auto iter = QuickNewIterator();
     iter->SeekToRoot();
     RealBounded bound(key, key);
@@ -74,10 +73,10 @@ struct SBSkiplist {
     iter->QuickGetBufferOnRoute(container, key);
     delete iter;
   }
-  void UpdateStatistics(std::shared_ptr<BoundedValue> value, uint32_t label, int64_t diff, int64_t time) {
+  void UpdateStatistics(const BFile& file, uint32_t label, int64_t diff, int64_t time) {
     iter_.SeekToRoot();
-    iter_.SeekRange(*value);
-    auto target = iter_.SeekValueInRoute(value->Identifier());
+    iter_.SeekRange(file);
+    auto target = iter_.SeekValueInRoute(file.Identifier());
     if (target == nullptr) {
       // file is deleted when bversion is unlocked.
       return;
@@ -87,20 +86,20 @@ struct SBSkiplist {
     iter_.SetRouteStatisticsDirty();
     //iter_.UpdateRouteHottest(target);
   }
-  bool Del(TypeValuePtr value, bool auto_reinsert = true) {
+  BFile* Pop(const BFile& file, bool auto_reinsert = true) {
     iter_.SeekToRoot();
     //auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    return iter_.Del(*options_, value, auto_reinsert);
+    return iter_.Del(*options_, file, auto_reinsert);
   }
-  void PickFilesByIteratorOld(std::shared_ptr<Scorer> scorer, BoundedValueContainer* containers) {
+  void PickFilesByIteratorOld(std::shared_ptr<Scorer> scorer, BFileVec* containers) {
     //height = iter_.Current().height_;
     if (containers == nullptr)
       return;
     
-    BoundedValueContainer& base_buffer = containers[0];
-    BoundedValueContainer& child_buffer = containers[1];
-    BoundedValueContainer& guards = containers[2];
-    BoundedValueContainer& l0guards = containers[3];
+    BFileVec& base_buffer = containers[0];
+    BFileVec& child_buffer = containers[1];
+    BFileVec& guards = containers[2];
+    BFileVec& l0guards = containers[3];
 
     // get file in current.
     iter_.GetBufferInCurrent(base_buffer);    
@@ -168,13 +167,13 @@ struct SBSkiplist {
       }
     }
   }
-  void PickFilesByIterator(std::shared_ptr<Scorer> scorer, BoundedValueContainer* containers) {
+  void PickFilesByIterator(std::shared_ptr<Scorer> scorer, BFileVec* containers) {
     if (containers == nullptr) return;
     
-    BoundedValueContainer& base_buffer = containers[0];
-    BoundedValueContainer& child_buffer = containers[1];
-    BoundedValueContainer& guards = containers[2];
-    BoundedValueContainer& l0guards = containers[3];
+    BFileVec& base_buffer = containers[0];
+    BFileVec& child_buffer = containers[1];
+    BFileVec& guards = containers[2];
+    BFileVec& l0guards = containers[3];
 
     // get file in current.
     iter_.GetBufferInCurrent(base_buffer);
@@ -207,7 +206,7 @@ struct SBSkiplist {
     }
   }
   double PickFilesByScoreInHeight(int height, std::shared_ptr<Scorer> scorer, double baseline,
-                          BoundedValueContainer* containers = nullptr) {
+                          BFileVec* containers = nullptr) {
     iter_.SeekToRoot();
     double max_score = iter_.SeekScoreInHeight(height, scorer, baseline, true);
     //height = iter_.Current().height_;
@@ -216,7 +215,7 @@ struct SBSkiplist {
     return max_score;
   }
   double PickFilesByScore(std::shared_ptr<Scorer> scorer, double baseline,
-                          BoundedValueContainer* containers = nullptr) {
+                          BFileVec* containers = nullptr) {
     iter_.SeekToRoot();
     double max_score = iter_.SeekScore(scorer, baseline, true);
     //height = iter_.Current().height_;
@@ -267,7 +266,7 @@ struct SBSkiplist {
       for (int h = 0; h < height; h ++) {
         lns.emplace_back(); NodeStatus& status = *lns.rbegin();//NodeStatus status;
         //iter->SeekNode(c);
-        BoundedValueContainer children;
+        BFileVec children;
         node->GetChildGuard(h, &children);
         //iter->GetChildGuardInCurrent(children);
         auto& buffer = node->LevelAt(h)->buffer_;
@@ -378,7 +377,7 @@ struct SBSkiplist {
     // return only last level statistics.
     for (iter->SeekToFirst(0); iter->Valid(); iter->Next())
       if (iter->Current().Buffer().size() == 1)
-        d.AddStatistics(iter->Current().node_->Guard(), iter->Current().Buffer().GetStatistics());
+        d.AddStatistics(iter->Current().node_->Guard(), *iter->Current().Buffer().GetStatistics());
     
     os << "----------Print KSGet----------" << std::endl;
     d.PrintTo(os, options_->NowTimeSlice(), KSGetCount);
@@ -413,7 +412,7 @@ struct SBSkiplist {
 
   }
   std::shared_ptr<SBSNode> GetHead() const { return head_; }
-  std::vector<std::pair<size_t, SBSNode::ValuePtr>>& Recycler() { return iter_.Recycler(); }
+  //std::vector<std::pair<size_t, SBSNode::ValuePtr>>& Recycler() { return iter_.Recycler(); }
 
   bool isDirty() const {
     auto iter = NewIterator();
