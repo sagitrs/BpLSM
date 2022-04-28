@@ -138,10 +138,7 @@ struct CoordinatesStack : private std::vector<Coordinates> {
   }
   void Clear() { clear(); }
   void SetToIterator(const CoordinatesStackIterator& iter) { Resize(iter.CurrentCursor() + 1); }
-  std::shared_ptr<CoordinatesStackIterator> NewIterator() const { 
-    return std::make_shared<CoordinatesStackIterator>(const_cast<CoordinatesStack*>(this)); 
-  }
-  CoordinatesStackIterator* QuickNewIterator() const {
+  CoordinatesStackIterator* NewIterator() const {
     return new CoordinatesStackIterator(const_cast<CoordinatesStack*>(this));
   }
 };
@@ -206,6 +203,7 @@ struct SBSIterator : public Printable {
         return 1;
       }
     }
+    delete iter;
     SeekToRoot();
     return 0;
   }
@@ -243,6 +241,7 @@ struct SBSIterator : public Printable {
         return res;
       }
     }
+    delete iter;
     return nullptr;
   }
   
@@ -304,6 +303,7 @@ struct SBSIterator : public Printable {
         } 
       }
     }
+    delete iter;
     return true;
   }
  public:
@@ -320,6 +320,7 @@ struct SBSIterator : public Printable {
       else
         break;
     }
+    delete iter;
   }
   void SetRouteStatisticsDirty() {
     auto iter = s_.NewIterator();
@@ -328,6 +329,7 @@ struct SBSIterator : public Printable {
     iter->Current().Buffer().SetStatsDirty();
     for (; iter->Valid(); iter->Prev()) 
       iter->Current().SetStatisticsDirty();
+    delete iter;
   }
   bool Add(const SBSOptions& options, SBSNode::ValuePtr value) {
     SeekRange(*value, true);
@@ -344,23 +346,13 @@ struct SBSIterator : public Printable {
  private:
  public:
   // Get all the values on the path that are overlap with the given range.
-  void QuickGetBufferOnRoute(BFileVec& results, const Slice& key) const {
-    auto iter = s_.QuickNewIterator();
+  void GetBufferOnRoute(BFileVec& results, const Slice& key) const {
+    auto iter = s_.NewIterator();
     for (iter->SeekToLast(); iter->Valid(); iter->Prev())
       iter->Current().GetCovers(results, key);
     delete iter;
   }
-  void GetBufferOnRoute(BFileVec& results, std::shared_ptr<Bounded> range) const {
-    auto iter = s_.NewIterator();
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-      iter->Current().GetRanges(results, range);
-    }
-    iter->SeekToLast();
-    auto now = head_->options_.NowTimeSlice();
-    for (auto& file: iter->Current().Buffer()) {
-      file->UpdateStatistics(KSGetCount, 1, now);
-    }
-  }
+  
   void GetBufferInCurrent(BFileVec& results, std::shared_ptr<Bounded> range = nullptr) { s_.Top().GetRanges(results, range); }
 
   void GetChildGuardInCurrent(BFileVec& results) {
@@ -487,6 +479,7 @@ struct SBSIterator : public Printable {
     auto iter = s_.NewIterator();
     for (iter->SeekToFirst(); iter->Valid(); iter->Next())
       snapshot.emplace_back("", iter->Current().ToString());
+    delete iter;
   }
   };
 

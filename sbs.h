@@ -55,22 +55,13 @@ struct SBSkiplist {
     iter_.SeekRange(range, true);
     return iter_.Current().height_;
   }
-  void Lookup(const Bounded& range, BFileVec& container) const {
-    auto iter = QuickNewIterator();
-    iter->SeekToRoot();
-    iter->SeekRange(range);
-    //std::cout << iter.ToString() << std::endl;
-    auto bound = std::make_shared<RealBounded>(range.Min(), range.Max());
-    iter->GetBufferOnRoute(container, bound);
-    delete iter;
-  }
   void LookupKey(const Slice& key, BFileVec& container) const {
     auto iter = QuickNewIterator();
     iter->SeekToRoot();
     RealBounded bound(key, key);
     iter->SeekRange(bound);
     //std::cout << iter.ToString() << std::endl;
-    iter->QuickGetBufferOnRoute(container, key);
+    iter->GetBufferOnRoute(container, key);
     delete iter;
   }
   void UpdateStatistics(const BFile& file, uint32_t label, int64_t diff, int64_t time) {
