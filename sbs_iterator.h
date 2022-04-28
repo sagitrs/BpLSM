@@ -19,12 +19,12 @@ struct Coordinates {
   void JumpDown(size_t down = 1) { assert(height_ >= down); height_ -= down; }
   bool Valid() const { return node_ != nullptr; }
 
-  Coordinates NextNode() const { return Coordinates(Next(), height_); }
-  Coordinates DownNode() const { assert(height_ > 0); return Coordinates(node_, height_ - 1); }
+  inline Coordinates NextNode() const { return Coordinates(Next(), height_); }
+  inline Coordinates DownNode() const { assert(height_ > 0); return Coordinates(node_, height_ - 1); }
 
   int TestState(const SBSOptions& options) const { return node_->TestState(options, height_); }
   size_t Width() const { return node_->Width(height_); }
-  bool Fit(const Bounded& range, bool no_overlap) const { return node_->Fit(height_, range, no_overlap); }
+  inline bool Fit(const Bounded& range, bool no_overlap) const { return node_->Fit(height_, range, no_overlap); }
   BFile* Del(const BFile& file) const { 
     return node_->Del(height_, file); 
   }
@@ -63,7 +63,7 @@ struct Coordinates {
       }
     }
   }
-  void GetCovers(BFileVec& results, const Slice& key) {
+  void GetCovers(BFileVec& results, const Slice& key) const {
     auto& buffer = node_->level_[height_]->buffer_;
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
       auto& v = *i;
@@ -107,7 +107,7 @@ struct CoordinatesStack : private std::vector<Coordinates> {
   const Coordinates& operator[](size_t k) const { return std::vector<Coordinates>::operator[](k); }
   Coordinates& reverse_at(size_t k) { return (*this)[size() - 1 - k]; }
 
-  void Push(const Coordinates& coor) { push_back(coor); }
+  inline void Push(const Coordinates& coor) { push_back(coor); }
   Coordinates Pop() {
     assert(!empty());
     Coordinates result = *rbegin();
@@ -157,7 +157,7 @@ struct SBSIterator : public Printable {
   //----------------------iterator operation---------------------
  public:
   bool Valid() const { return s_.Top().Valid(); }
-  void SeekToRoot() { 
+  inline void SeekToRoot() { 
     s_.Clear();
     s_.Push(Coordinates(head_, head_->Height()-1)); 
     //recycler_.clear();

@@ -25,7 +25,7 @@ struct SBSkiplist {
     head_(new SBSNode(options_, 6)),
     iter_(head_) {}
   void Reinsert() { iter_.Reinsert(options_); }
-  SBSIterator* NewIterator() const { return new SBSIterator(head_); }
+  inline SBSIterator* NewIterator() const { return new SBSIterator(head_); }
   
   ~SBSkiplist() {
     std::vector<SBSNode*> list;
@@ -61,7 +61,7 @@ struct SBSkiplist {
     iter_.SeekRange(range, true);
     return iter_.Current().height_;
   }
-  void LookupKey(const Slice& key, BFileVec& container) const {
+  inline void LookupKey(const Slice& key, BFileVec& container) const {
     auto iter = NewIterator();
     iter->SeekToRoot();
     RealBounded bound(key, key);

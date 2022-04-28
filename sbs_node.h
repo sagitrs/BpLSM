@@ -145,9 +145,9 @@ struct SBSNode : public Printable {
     }
     return options.TestState(width, is_head_); 
   }
-  bool Fit(size_t height, const Bounded& range, bool no_overlap) const { 
-    Slice a(Guard()), b(Next(height)?Next(height)->Guard():"");
-    Slice ra(range.Min()), rb(range.Max());
+  inline bool Fit(size_t height, const Bounded& range, bool no_overlap) const { 
+    //Slice a(Guard()), b(Next(height)?Next(height)->Guard():"");
+    //Slice ra(range.Min()), rb(range.Max());
     int cmp1 = range.Min().compare(Guard());
     if (cmp1 < 0) return 0;
     auto next = Next(height);
