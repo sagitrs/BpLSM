@@ -11,7 +11,7 @@ struct Scorer {
     size_t head_height_;
     Statistics* global_stats_;
     Statistable::TypeTime time_;
-    GlobalStatus(std::shared_ptr<SBSNode> head) {
+    GlobalStatus(SBSNode* head) {
       assert(head->is_head_);
       head_height_ = head->Height();
       auto head_stats = head->GetTreeStatistics(head_height_ - 1);
@@ -23,25 +23,28 @@ struct Scorer {
         delete global_stats_;
     }
   };
-  std::shared_ptr<GlobalStatus> status_;
+  GlobalStatus* status_;
   bool is_updated_;
   double max_score_;
 
-  std::shared_ptr<SBSNode> node_;
+  SBSNode* node_;
   size_t height_;
  public:
   Scorer() 
   : status_(nullptr), is_updated_(false), max_score_(0), 
     node_(nullptr), height_(0) {}
-  virtual void Init(std::shared_ptr<SBSNode> head) { 
-    status_ = std::make_shared<GlobalStatus>(head); 
+  virtual void Init(SBSNode* head) { 
+    status_ = new GlobalStatus(head); 
+  }
+  ~Scorer() {
+    if (status_) delete status_;
   }
   virtual void Reset(double baseline) { 
     is_updated_ = 0;
     max_score_ = baseline;
   }
   virtual double MaxScore() const { return max_score_; }
-  virtual bool Update(std::shared_ptr<SBSNode> node, size_t height) {
+  virtual bool Update(SBSNode* node, size_t height) {
     //if (max_score_ == 1) return 0;
     SetNode(node, height);
     double score = GetScore(node, height);
@@ -52,7 +55,7 @@ struct Scorer {
     }
     return 0;
   }
-  virtual double GetScore(std::shared_ptr<SBSNode> node, size_t height) {
+  virtual double GetScore(SBSNode* node, size_t height) {
     SetNode(node, height);
     return Calculate();
   }
@@ -71,7 +74,7 @@ struct Scorer {
   }
  // resources can be used.
  protected:
-  void SetNode(std::shared_ptr<SBSNode> node, size_t height) { node_ = node; height_ = height; }
+  void SetNode(SBSNode* node, size_t height) { node_ = node; height_ = height; }
   size_t Height() const { return height_; }
   size_t Width(size_t depth = 1) const { 
     size_t res = node_->GeneralWidth(height_, depth); 

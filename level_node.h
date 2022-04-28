@@ -14,7 +14,7 @@ typedef BFileVec TypeBuffer;
 
 struct LevelNode : public Printable {
   // next node of this level.
-  std::shared_ptr<SBSNode> next_;
+  SBSNode* next_;
   // files that stored in this level.
   TypeBuffer buffer_;
   // temp variables.
@@ -63,7 +63,7 @@ struct LevelNode : public Printable {
 
   // Build blank node.
   LevelNode(const StatisticsOptions& stat_options, 
-            std::shared_ptr<SBSNode> next) 
+            SBSNode* next) 
   : next_(next), 
     buffer_(), 
     table_(stat_options) {}

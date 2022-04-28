@@ -17,17 +17,23 @@ struct SBSkiplist {
   typedef SBSNode TypeNode;
   SBSOptions options_;
  private:
-  std::shared_ptr<SBSNode> head_;
+  SBSNode* head_;
   SBSIterator iter_;
  public:
   SBSkiplist(const SBSOptions& options) 
   : options_(options),
-    head_(std::make_shared<SBSNode>(options_, 6)),
+    head_(new SBSNode(options_, 6)),
     iter_(head_) {}
   void Reinsert() { iter_.Reinsert(options_); }
-  std::shared_ptr<SBSIterator> NewIterator() const { return std::make_shared<SBSIterator>(head_); }
-  SBSIterator* QuickNewIterator() const { return new SBSIterator(head_); }
+  SBSIterator* NewIterator() const { return new SBSIterator(head_); }
   
+  ~SBSkiplist() {
+    std::vector<SBSNode*> list;
+    for (SBSNode* node = head_; node != nullptr; node = node->Next(0))
+      list.push_back(node);
+    for (auto& node : list)
+      delete node;
+  }
   void Put(BFile* value) {
     bool state = PutBlocked(value);
     if (!state) {
@@ -56,7 +62,7 @@ struct SBSkiplist {
     return iter_.Current().height_;
   }
   void LookupKey(const Slice& key, BFileVec& container) const {
-    auto iter = QuickNewIterator();
+    auto iter = NewIterator();
     iter->SeekToRoot();
     RealBounded bound(key, key);
     iter->SeekRange(bound);
@@ -240,6 +246,7 @@ struct SBSkiplist {
       }
     }
     os << "----------Print List End----------" << std::endl;
+    delete iter;
   }
  
   void OldPrintSimple(std::ostream& os) const {
@@ -258,6 +265,7 @@ struct SBSkiplist {
       os << std::endl;
     }
     os << "----------Print Simple End----------" << std::endl;
+    delete iter;
   }
   void PrintSimple(std::ostream& os) const {
     auto iter = NewIterator();
@@ -282,6 +290,7 @@ struct SBSkiplist {
       os << std::endl;
     }
     os << "----------Print Simple End----------" << std::endl;
+    delete iter;
   }
   void PrintStatistics(std::ostream& os) const {
     os << "----------Print Statistics Begin----------" << std::endl;
@@ -302,6 +311,7 @@ struct SBSkiplist {
     os << "----------Print KSIterate----------" << std::endl;
     d.PrintTo(os, now, KSIterateCount);
     os << "----------Print Statistics End----------" << std::endl;
+    delete iter;
   }
  public:
   std::string ToString() const {
@@ -327,15 +337,15 @@ struct SBSkiplist {
     return total;
 
   }
-  std::shared_ptr<SBSNode> GetHead() const { return head_; }
+  SBSNode* GetHead() const { return head_; }
   //std::vector<std::pair<size_t, SBSNode::ValuePtr>>& Recycler() { return iter_.Recycler(); }
 
   bool isDirty() const {
     auto iter = NewIterator();
     iter->SeekDirty();
-    if (iter->Current().height_ == 0) 
-      return 0;
-    return 1;
+    bool dirty = (iter->Current().height_ > 0);
+    delete iter;
+    return dirty;
   }
 
   void ClearHottest() {

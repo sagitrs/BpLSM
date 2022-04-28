@@ -17,7 +17,7 @@ struct Coordinates;
 struct Scorer;
 
 struct SBSNode : public Printable {
-  typedef std::shared_ptr<SBSNode> SBSP;
+  typedef SBSNode* SBSP;
   typedef BFile* ValuePtr;
   friend struct SBSIterator;
   friend struct Coordinates;
@@ -226,7 +226,7 @@ struct SBSNode : public Printable {
     if (height == 0) {
       auto &a = level_[0]->buffer_;
       assert(a.size() == 2);
-      auto tmp = std::make_shared<SBSNode>(options_, Next(0));
+      auto tmp = new SBSNode(options_, Next(0));
       auto v = *a.rbegin();
       tmp->Add(options, 0, v);
       SetNext(0, tmp);

@@ -51,7 +51,7 @@ struct Coordinates {
   void SetStatisticsDirty() { node_->level_[height_]->table_.SetDirty(); }
   //bool operator ==(const Coordinates& b) { return node_ == b.node_; }
   bool IsDirty() const { return node_->level_[height_]->isDirty(); }
-  void GetRanges(BFileVec& results, std::shared_ptr<Bounded> key = nullptr) {
+  void GetRanges(BFileVec& results, const Bounded* key = nullptr) {
     auto& buffer = node_->level_[height_]->buffer_;
     auto now = node_->options_.NowTimeSlice();
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
@@ -353,7 +353,9 @@ struct SBSIterator : public Printable {
     delete iter;
   }
   
-  void GetBufferInCurrent(BFileVec& results, std::shared_ptr<Bounded> range = nullptr) { s_.Top().GetRanges(results, range); }
+  void GetBufferInCurrent(BFileVec& results) { 
+    s_.Top().GetRanges(results); 
+  }
 
   void GetChildGuardInCurrent(BFileVec& results) {
     if (s_.Top().height_ == 0) return;
