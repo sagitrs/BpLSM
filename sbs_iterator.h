@@ -256,38 +256,38 @@ struct SBSIterator : public Printable {
   // Add a value to the current node.
   // This may recursively trigger a split operation.
   // Assert: Already SeekRange().
-  double SeekScore(std::shared_ptr<Scorer> scorer, double baseline, bool optimal) {
-    scorer->Init(head_);
-    scorer->Reset(baseline);
+  double SeekScore(Scorer& scorer, double baseline, bool optimal) {
+    scorer.Init(head_);
+    scorer.Reset(baseline);
     CoordinatesStack max_stack(s_);
     
     //for (int height = 1; height < SBSHeight(); ++height) {
     for (int height = SBSHeight() - 1; height > 0; --height) {
       SeekToRoot();
       for (Dive(SBSHeight() - 1 - height); Valid(); Next()) 
-        if (scorer->Update(s_.Top().node_, s_.Top().height_)) { 
+        if (scorer.Update(s_.Top().node_, s_.Top().height_)) { 
           max_stack = s_;
           if (!optimal)
-            return scorer->MaxScore();
+            return scorer.MaxScore();
         }
     }
     s_ = max_stack;
-    return scorer->MaxScore();
+    return scorer.MaxScore();
   }
-  double SeekScoreInHeight(int height, std::shared_ptr<Scorer> scorer, double baseline, bool optimal) {
-    scorer->Init(head_);
-    scorer->Reset(baseline);
+  double SeekScoreInHeight(int height, Scorer& scorer, double baseline, bool optimal) {
+    scorer.Init(head_);
+    scorer.Reset(baseline);
     CoordinatesStack max_stack(s_);
     
     for (SeekToFirst(height); Valid(); Next()) 
-      if (scorer->Update(s_.Top().node_, s_.Top().height_)) { 
+      if (scorer.Update(s_.Top().node_, s_.Top().height_)) { 
         max_stack = s_;
         if (!optimal)
-          return scorer->MaxScore();
+          return scorer.MaxScore();
       }
     
     s_ = max_stack;
-    return scorer->MaxScore();
+    return scorer.MaxScore();
   }
  private:
   bool CheckSplit(const SBSOptions& options) {
@@ -370,7 +370,8 @@ struct SBSIterator : public Printable {
     //Coordinates target = s_.Top();
     target.GetBufferWithChildGuard(&results[0], &results[1]);
   }
-  double GetScore(std::shared_ptr<Scorer> scorer) const { return scorer->GetScore(s_.Top().node_, s_.Top().height_); }
+  double GetScore(Scorer& scorer) const { 
+    return scorer.GetScore(s_.Top().node_, s_.Top().height_); }
   // Assume: The current node contains the target value.
   // Delete a value within the current node which is the same as the given value.
   // This may recursively trigger a merge operation and possibly a split operation.
@@ -485,65 +486,3 @@ struct SBSIterator : public Printable {
 
 
 }  
-
-/*
-
-  void UpdateRouteHottest(std::shared_ptr<BoundedValue> target) {
-    if (Current().height_ > 0) {
-      // nothing to be updated.
-      return;
-    }
-    auto iter = s_.NewIterator();
-
-    for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
-      auto &h = iter->Current().Table().hottest_;
-      auto &t = iter->Current().Table().update_time_;
-      if (iter->Current().height_ == 0) {
-        assert(iter->Current().Buffer().size() == 1 && iter->Current().Buffer()[0] == target);
-        h = target;
-      } else {
-        if (h == nullptr) {
-          
-          auto tmp = iter->Current().GetHottest(t);
-          assert(tmp == h);
-        }
-        if (h->GetStatistics(KSGetCount, t) < target->GetStatistics(KSGetCount, t)) 
-          h = target;
-        else
-          return;
-      }
-    }
-  }
-std::shared_ptr<Statistics> GetRouteMergedStatistics() {
-    auto iter = s_.NewIterator();
-    int div = 1;
-
-    iter->SeekToLast();
-    const Statistics& stats = iter->Current().Buffer().GetStatistics();
-    Statistics sum(stats);
-    RealBounded bound = iter->Current().Buffer();
-
-    for (iter->Prev(); iter->Valid(); iter->Prev()) {
-      div *= iter->Current().Width();
-      //auto stats = iter->Current().Buffer().GetStatistics();
-      //if (stats == nullptr) continue;
-      for (auto value : iter->Current().Buffer()) 
-        if (bound.Compare(*value) == BOverlap) {
-          auto s1 = std::dynamic_pointer_cast<Statistable>(value);
-          auto stats = std::dynamic_pointer_cast<Statistics>(s1);
-          if (sum == nullptr) 
-            sum = std::make_shared<Statistics>(*stats);
-          else {
-            auto tmp = std::make_shared<Statistics>(*stats);
-            tmp->ScaleStatistics(DefaultCounterTypeMax, 1, div);
-            sum->MergeStatistics(tmp);
-          }
-      }
-      //iter->Current().GetRanges(results, range);
-    }
-    return sum;
-  }
-
-  //void UpdateGlobalStatistics(uint32_t label, int64_t diff, int time) {}
-
-*/

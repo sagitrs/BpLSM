@@ -19,7 +19,6 @@ struct Scorer;
 struct SBSNode : public Printable {
   typedef std::shared_ptr<SBSNode> SBSP;
   typedef BFile* ValuePtr;
-  typedef LevelNode InnerNode;
   friend struct SBSIterator;
   friend struct Coordinates;
   friend struct Scorer;
@@ -27,7 +26,7 @@ struct SBSNode : public Printable {
   SBSOptions options_;
   bool is_head_;
   BFile* pacesetter_;
-  std::vector<std::shared_ptr<InnerNode>> level_;
+  std::vector<LevelNode*> level_;
  public:
   // build head node.
   SBSNode(const SBSOptions& options, size_t height)
@@ -36,7 +35,7 @@ struct SBSNode : public Printable {
     pacesetter_(nullptr),
     level_({}) {
       for (size_t i = 0; i < height; ++i) {
-        level_.push_back(std::make_shared<LevelNode>(options, nullptr));
+        level_.push_back(new LevelNode(options, nullptr));
       }
       Rebound();
     }
@@ -45,7 +44,13 @@ struct SBSNode : public Printable {
   : options_(options), 
     is_head_(false), 
     pacesetter_(nullptr), 
-    level_({std::make_shared<LevelNode>(options, next)}) {}
+    level_({new LevelNode(options, next)}) {}
+
+  ~SBSNode() {
+    while (!level_.empty())
+      DecHeight();
+  }
+
   BFile* Pacesetter() const { return pacesetter_; }
   Slice Guard() const { 
     if (is_head_) return "";
@@ -60,7 +65,7 @@ struct SBSNode : public Printable {
     }
     return next;
   }
-  std::shared_ptr<LevelNode> LevelAt(size_t height) const { return level_[height]; }
+  LevelNode* LevelAt(size_t height) const { return level_[height]; }
  public:
   size_t Width(size_t height) const {
     if (height == 0) return 0;
@@ -167,7 +172,12 @@ struct SBSNode : public Printable {
     res->SetDeletedLevel(height);
     return res;
   }
-  void DecHeight() { level_.pop_back(); }
+  void DecHeight() {
+    assert(!level_.empty()); 
+    auto last = *level_.rbegin();
+    delete last;
+    level_.pop_back(); 
+  }
   const Statistics* GetNodeStatistics(size_t height) { return level_[height]->buffer_.GetStatistics(); }
   
   BFile* GetHottest(size_t height, int64_t time) {
@@ -230,7 +240,7 @@ struct SBSNode : public Printable {
       assert(reserve > 1);
       SBSP next = Next(height);
       SBSP middle = Next(height - 1, reserve);
-      auto tmp = std::make_shared<LevelNode>(options_, next);
+      auto tmp = new LevelNode(options_, next);
       {
         // Check dirty problem.
         RealBounded div(middle->Guard(), middle->Guard());
@@ -247,8 +257,10 @@ struct SBSNode : public Printable {
             assert(cmp == BOverlap);
             assert(v->Min().compare(middle->Guard()) <= 0 
                 && middle->Guard().compare(v->Max()) <= 0);
-            if (!force)
+            if (!force) {
+              delete tmp;
               return 0;
+            }
             force->Add(v);
           }
         }
@@ -314,32 +326,3 @@ struct SBSNode : public Printable {
 
 
 }  
-
-/*
-std::shared_ptr<BoundedValue> GetHottest(size_t height, size_t time) {
-    if (height == 0) {
-      if (level_[0]->buffer_.empty())
-        return nullptr; 
-      assert(level_[0]->buffer_.size() == 1); 
-      return level_[0]->buffer_[0]; 
-    } 
-    auto &h = level_[height]->table_.hottest_;
-    auto &t = level_[height]->table_.update_time_;
-    if (h != nullptr && t == time)
-      return h;
-    h = GetHottest(height - 1, time);
-    t = time;
-    int64_t ri = (h == nullptr ? 0 : h->GetStatistics(KSGetCount, time));
-    for (SBSP i = Next(height - 1); i != Next(height); i = i->Next(height - 1)) {
-      auto tmp = i->GetHottest(height - 1, time);
-      if (tmp == nullptr) continue;
-      auto tmp_ri = tmp->GetStatistics(KSGetCount, time);
-      if (h == nullptr || tmp_ri > ri) {
-        h = tmp;
-        ri = tmp_ri;
-      }
-    }
-    return h;
-  }
-
-*/

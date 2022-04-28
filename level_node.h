@@ -84,7 +84,7 @@ struct LevelNode : public Printable {
   bool Overlap() const { return buffer_.Overlap(); }
   bool isDirty() const { return !buffer_.empty(); }
   //bool isStatisticsDirty() const { return table_.isDirty(); }
-  void Absorb(std::shared_ptr<LevelNode> target) { 
+  void Absorb(LevelNode* target) { 
     next_ = target->next_;
     buffer_.AddAll(target->buffer_);
     table_.SetDirty();

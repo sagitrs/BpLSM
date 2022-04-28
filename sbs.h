@@ -17,7 +17,7 @@ struct SBSkiplist {
   typedef SBSNode TypeNode;
   SBSOptions options_;
  private:
-  std::shared_ptr<TypeNode> head_;
+  std::shared_ptr<SBSNode> head_;
   SBSIterator iter_;
  public:
   SBSkiplist(const SBSOptions& options) 
@@ -82,83 +82,7 @@ struct SBSkiplist {
     //auto target = std::dynamic_pointer_cast<BoundedValue>(value);
     return iter_.Del(options_, file, auto_reinsert);
   }
-  void PickFilesByIteratorOld(std::shared_ptr<Scorer> scorer, BFileVec* containers) {
-    //height = iter_.Current().height_;
-    if (containers == nullptr)
-      return;
-    
-    BFileVec& base_buffer = containers[0];
-    BFileVec& child_buffer = containers[1];
-    BFileVec& guards = containers[2];
-    BFileVec& l0guards = containers[3];
-
-    // get file in current.
-    iter_.GetBufferInCurrent(base_buffer);    
-    int rest = options_.MaxCompactionFiles();
-    rest -= base_buffer.size();
-
-    std::deque<Coordinates> queue;
-    for (iter_.Dive(); 
-         iter_.Valid() && iter_.Current().node_->Guard().compare(base_buffer.Max()) <= 0; 
-         iter_.Next()) {
-      //if (base_buffer.Include(iter_.Current().node_->Guard()))
-      queue.push_back(Coordinates(iter_.Current()));
-    }
-
-    while (!queue.empty()) {
-      bool ok = iter_.SeekNode(queue.front());
-      assert(ok);
-      queue.pop_front();
-      
-      size_t h = iter_.Current().height_;
-      int files = h == 0 ? 0 : iter_.Current().Buffer().size();
-      if (h == 1) 
-        files += iter_.Current().Width();
-
-      bool load = false;
-      //else if (h + 1 == height && skip_first_level)
-      //  load = true;
-      if (base_buffer.Compare(iter_.Current().Buffer()) == sagitrs::BOverlap)
-        load = false;
-      if (h == 0)
-        load = true;
-      else if (rest < files)
-        load = false;
-      else {
-        if (rest < -10) {
-          std::cout << "Warning : Compact too much files(" << rest << ")." << std::endl;
-        }
-        double score = scorer->GetScore(iter_.Current().node_, iter_.Current().height_); 
-        score += 1.0 / scorer->Capacity();
-        load = (score >= options_.NeedsCompactionScore());
-      }
-
-      //auto pacesetter = iter_.Current().node_->Pacesetter();
-      auto& l0buffer = iter_.Current().node_->LevelAt(0)->buffer_;
-      auto guard = (l0buffer.size() == 0 ? nullptr : l0buffer.at(0));// Pacesetter();
-      if (guard) {
-        if (h > 0) 
-          guards.push_back(guard);
-        else if (h == 0)
-          l0guards.push_back(guard);
-      }
-      if (load) { 
-        iter_.GetBufferInCurrent(child_buffer); 
-
-        if (h > 0) {
-          auto ed = iter_.Current().NextNode().DownNode();
-          for (iter_.Dive(); !(iter_.Current() == ed); iter_.Next()) {
-              queue.push_back(Coordinates(iter_.Current()));
-          }
-        }
-        rest -= files;
-        if (rest < 0 && h > 0) {
-          std::cout << "Warning : Compact too much files(" << rest << ")." << std::endl;
-        }
-      }
-    }
-  }
-  void PickFilesByIterator(std::shared_ptr<Scorer> scorer, BFileVec* containers) {
+  void PickFilesByIterator(Scorer& scorer, BFileVec* containers) {
     if (containers == nullptr) return;
     
     BFileVec& base_buffer = containers[0];
@@ -196,7 +120,7 @@ struct SBSkiplist {
       }
     }
   }
-  double PickFilesByScoreInHeight(int height, std::shared_ptr<Scorer> scorer, double baseline,
+  double PickFilesByScoreInHeight(int height, Scorer& scorer, double baseline,
                           BFileVec* containers = nullptr) {
     iter_.SeekToRoot();
     double max_score = iter_.SeekScoreInHeight(height, scorer, baseline, true);
@@ -205,7 +129,7 @@ struct SBSkiplist {
       PickFilesByIterator(scorer, containers);
     return max_score;
   }
-  double PickFilesByScore(std::shared_ptr<Scorer> scorer, double baseline,
+  double PickFilesByScore(Scorer& scorer, double baseline,
                           BFileVec* containers = nullptr) {
     iter_.SeekToRoot();
     double max_score = iter_.SeekScore(scorer, baseline, true);
@@ -214,10 +138,11 @@ struct SBSkiplist {
       PickFilesByIterator(scorer, containers);
     return max_score;
   }
-  bool HasScore(std::shared_ptr<Scorer> scorer, double baseline) {
+  bool HasScore(Scorer& scorer, double baseline) {
+    assert(false); // dont use, too slow.
     iter_.SeekToRoot();
     iter_.SeekScore(scorer, baseline, false);
-    return scorer->isUpdated();
+    return scorer.isUpdated();
   }
  private:
   void PrintDetailed(std::ostream& os) const {
