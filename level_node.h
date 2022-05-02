@@ -35,7 +35,16 @@ struct LevelNode : public Printable {
       update_time_(0),
       hottest_(nullptr),
       max_runs_(0) {}
+
+    // Copy
+    VariableTable(const VariableTable& table) :
+      stats_(nullptr),
+      update_time_(0),
+      hottest_(nullptr),
+      max_runs_(0) {}
+
     ~VariableTable() {
+      SetDirty();
       //if (stats_) delete stats_;
     }
     //bool isDirty() const { return stats_dirty_; }
@@ -67,6 +76,16 @@ struct LevelNode : public Printable {
   : next_(next), 
     buffer_(), 
     table_(stat_options) {}
+  // Copy existing node.
+  LevelNode(const LevelNode& node):
+    next_(node.next_),
+    buffer_(node.buffer_),
+    table_(node.table_) {}
+  ~LevelNode() {
+    if (!buffer_.empty())
+      for (BFile* file : buffer_)
+        delete file;
+  }
 
   void Add(BFile* value) {
     buffer_.Add(value); 

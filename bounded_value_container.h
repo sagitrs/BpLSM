@@ -54,7 +54,10 @@ struct BFileVec : public BFileVecBase,
     RealBounded("Undefined", "Undefined"),
     stats_(nullptr) { Rebound(); }
 
-  ~BFileVec() { if (stats_) delete stats_; }
+  ~BFileVec() { 
+    if (stats_) 
+      delete stats_;
+  }
 
   static int StaticCompare(const BFile &a, const BFile &b) {
     int cmp = a.Min().compare(b.Min());

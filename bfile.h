@@ -1,4 +1,5 @@
 #pragma once
+
 #include "bounded.h"
 #include "statistics.h"
 #include "../../db/version_edit.h"

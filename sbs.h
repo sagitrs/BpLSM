@@ -7,6 +7,7 @@
 #include "sbs_node.h"
 #include "sbs_iterator.h"
 #include "delineator.h"
+#include "sublist.h"
 
 #include "scorer_impl.h"
 namespace sagitrs {
@@ -18,13 +19,10 @@ struct SBSkiplist {
   SBSOptions options_;
  private:
   SBSNode* head_;
-  SBSIterator iter_;
  public:
   SBSkiplist(const SBSOptions& options) 
   : options_(options),
-    head_(new SBSNode(options_, 6)),
-    iter_(head_) {}
-  void Reinsert() { iter_.Reinsert(options_); }
+    head_(new SBSNode(options_, 6)) {}
   inline SBSIterator* NewIterator() const { return new SBSIterator(head_); }
   
   ~SBSkiplist() {
@@ -34,32 +32,34 @@ struct SBSkiplist {
     for (auto& node : list)
       delete node;
   }
+  void ReplaceHead(SBSNode* new_head) { head_ = new_head; }
   void Put(BFile* value) {
-    bool state = PutBlocked(value);
+    auto iter = NewIterator();
+    bool state = PutBlocked(value, iter);
     if (!state) {
       BFileVec container;
-      assert(iter_.Current().TestState(options_) > 0);
-      iter_.Current().SplitNext(options_, &container);
+      assert(iter->Current().TestState(options_) > 0);
+      iter->Current().SplitNext(options_, &container);
       for (auto &v : container) {
-        PutBlocked(v);
+        PutBlocked(v, iter);
       }
     }
+    delete iter;
   }
-  bool PutBlocked(BFile* value) {
-    iter_.SeekToRoot();
-    bool state = iter_.Add(options_, value);
+  bool PutBlocked(BFile* value, SBSIterator* iter) {
+    iter->SeekToRoot();
+    bool state = iter->Add(options_, value);
     return state;
     //iter.TargetIncStatistics(value->Min(), DefaultCounterType::PutCount, 1);                          // Put Statistics.
   }
   
-  void AddAll(const BFileVec& container) {
-    for (auto range : container)
-      iter_.Add(options_, range);
-  }
   int SeekHeight(const Bounded& range) {
-    iter_.SeekToRoot();
-    iter_.SeekRange(range, true);
-    return iter_.Current().height_;
+    auto iter = NewIterator();
+    iter->SeekToRoot();
+    iter->SeekRange(range, true);
+    int height = iter->Current().height_;
+    delete iter;
+    return height;
   }
   inline void LookupKey(const Slice& key, BFileVec& container) const {
     auto iter = NewIterator();
@@ -70,47 +70,70 @@ struct SBSkiplist {
     iter->GetBufferOnRoute(container, key);
     delete iter;
   }
+  SubSBS* LookupTree(const BFileEdit& edit, std::vector<SBSNode*>& prev) {
+    auto iter = NewIterator();
+    for (auto file : edit.deleted_) {
+      RealBounded bound(file->smallest.user_key(),file->smallest.user_key());
+      iter->SeekToRoot();
+      iter->SeekRange(bound);
+      BFile* target = iter->SeekValueInRoute(file->number);
+      size_t height = iter->Current().height_;
+      if (height == 0) { 
+        iter->Float(); 
+        height = iter->Current().height_; 
+      }
+      SBSNode* node = iter->Current().node_;
+      
+      if (!node->IsHead()) {
+        iter->SeekCurrentPrev(prev);
+        for (size_t i = 0; i < node->Height(); ++i)
+          assert(prev[i]->Next(i) == node);
+      }
+      delete iter;
+      return new SubSBS(node, height);
+    }
+    // no level 0 files are included.
+    delete iter;
+    assert(false);
+    return nullptr;
+  }
   void UpdateStatistics(const BFile& file, uint32_t label, int64_t diff, int64_t time) {
-    iter_.SeekToRoot();
-    iter_.SeekRange(file);
-    auto target = iter_.SeekValueInRoute(file.Identifier());
+    auto iter = NewIterator();
+    iter->SeekToRoot();
+    iter->SeekRange(file);
+    auto target = iter->SeekValueInRoute(file.Identifier());
     if (target == nullptr) {
       // file is deleted when bversion is unlocked.
       return;
     }
     //Statistics::TypeTime now = options_->NowTimeSlice();
     target->UpdateStatistics(label, diff, time);
-    iter_.SetRouteStatisticsDirty();
-    //iter_.UpdateRouteHottest(target);
+    iter->SetRouteStatisticsDirty();
+    //iter->UpdateRouteHottest(target);
+    delete iter;
   }
   BFile* Pop(const BFile& file, bool auto_reinsert = true) {
-    iter_.SeekToRoot();
+    auto iter = NewIterator();
+    iter->SeekToRoot();
     //auto target = std::dynamic_pointer_cast<BoundedValue>(value);
-    return iter_.Del(options_, file, auto_reinsert);
+    auto res = iter->Del(options_, file, auto_reinsert);
+    delete iter;
+    return res;
   }
-  void PickFilesByIterator(Scorer& scorer, BFileVec* containers) {
+  void PickFilesByIterator(SBSIterator* iter, BFileVec* containers) {
     if (containers == nullptr) return;
     
     BFileVec& base_buffer = containers[0];
     BFileVec& child_buffer = containers[1];
     BFileVec& guards = containers[2];
     BFileVec& l0guards = containers[3];
-
     // get file in current.
-    iter_.GetBufferInCurrent(base_buffer);
+    iter->GetBufferInCurrent(base_buffer);
     // if last level, pick files into this compaction, otherwise push to guards.
-    int height = iter_.Current().height_;
+    int height = iter->Current().height_;
     
-    auto st = iter_.Current(); st.JumpDown();
-    auto ed = iter_.Current(); ed.JumpNext(); ed.JumpDown();
-    // in a special case, too few children in this level.
-    /*
-    if (height >= 2 && iter_.Current().Width() < options_->MinWidth()) {
-      for (iter_.Dive(); iter_.Valid() && !(iter_.Current() == ed); iter_.Next()) {
-        iter_.GetBufferInCurrent(base_buffer);
-      }
-      st.JumpDown(); ed.JumpDown();
-    }*/
+    auto st = iter->Current(); st.JumpDown();
+    auto ed = iter->Current(); ed.JumpNext(); ed.JumpDown();
 
     for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
       auto& l0buffer = c.node_->LevelAt(0)->buffer_;
@@ -128,27 +151,22 @@ struct SBSkiplist {
   }
   double PickFilesByScoreInHeight(int height, Scorer& scorer, double baseline,
                           BFileVec* containers = nullptr) {
-    iter_.SeekToRoot();
-    double max_score = iter_.SeekScoreInHeight(height, scorer, baseline, true);
-    //height = iter_.Current().height_;
+    auto iter = NewIterator();
+    iter->SeekToRoot();
+    double max_score = iter->SeekScoreInHeight(height, scorer, baseline, true);
     if (containers)
-      PickFilesByIterator(scorer, containers);
+      PickFilesByIterator(iter, containers);
+    delete iter;
     return max_score;
   }
   double PickFilesByScore(Scorer& scorer, double baseline,
                           BFileVec* containers = nullptr) {
-    iter_.SeekToRoot();
-    double max_score = iter_.SeekScore(scorer, baseline, true);
-    //height = iter_.Current().height_;
+    auto iter = NewIterator();
+    iter->SeekToRoot();
+    double max_score = iter->SeekScore(scorer, baseline, true);
     if (containers)
-      PickFilesByIterator(scorer, containers);
+      PickFilesByIterator(iter, containers);
     return max_score;
-  }
-  bool HasScore(Scorer& scorer, double baseline) {
-    assert(false); // dont use, too slow.
-    iter_.SeekToRoot();
-    iter_.SeekScore(scorer, baseline, false);
-    return scorer.isUpdated();
   }
  private:
   void PrintDetailed(std::ostream& os) const {
@@ -316,15 +334,15 @@ struct SBSkiplist {
  public:
   std::string ToString() const {
     std::stringstream ss;
+    //PrintSimple(ss);
     PrintList(ss);
     PrintStatistics(ss);
-    //PrintSimple(ss);
     //PrintStatistics(ss);
     return ss.str();
   }
   size_t size() const {
     size_t total = 0;
-    auto iter = SBSIterator(head_);
+    SBSIterator iter(head_);
     iter.SeekToRoot();
     size_t H = iter.Current().height_;
 
@@ -338,8 +356,6 @@ struct SBSkiplist {
 
   }
   SBSNode* GetHead() const { return head_; }
-  //std::vector<std::pair<size_t, SBSNode::ValuePtr>>& Recycler() { return iter_.Recycler(); }
-
   bool isDirty() const {
     auto iter = NewIterator();
     iter->SeekDirty();
@@ -355,6 +371,35 @@ struct SBSkiplist {
         node->LevelAt(h)->table_.hottest_ = nullptr;
     }
   }
+
+  void CheckSplit(Coordinates coord) {
+    SBSIterator iter(head_);
+    iter.SeekNode(coord);
+    iter.CheckSplit(options_);
+  }
 };
 
 }
+
+/*
+
+  //std::vector<std::pair<size_t, SBSNode::ValuePtr>>& Recycler() { return iter_.Recycler(); }
+
+  bool HasScore(Scorer& scorer, double baseline) {
+    assert(false); // dont use, too slow.
+    iter_.SeekToRoot();
+    iter_.SeekScore(scorer, baseline, false);
+    return scorer.isUpdated();
+  }
+  void AddAll(const BFileVec& container) {
+    for (auto range : container)
+      iter_.Add(options_, range);
+  }
+    // in a special case, too few children in this level.
+    if (height >= 2 && iter_.Current().Width() < options_->MinWidth()) {
+      for (iter_.Dive(); iter_.Valid() && !(iter_.Current() == ed); iter_.Next()) {
+        iter_.GetBufferInCurrent(base_buffer);
+      }
+      st.JumpDown(); ed.JumpDown();
+    }
+*/

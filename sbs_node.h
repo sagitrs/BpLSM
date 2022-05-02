@@ -15,23 +15,26 @@ namespace sagitrs {
 struct SBSIterator;
 struct Coordinates;
 struct Scorer;
+struct SubSBS;
 
 struct SBSNode : public Printable {
   typedef SBSNode* SBSP;
   typedef BFile* ValuePtr;
   friend struct SBSIterator;
   friend struct Coordinates;
+  friend struct SubSBS;
   friend struct Scorer;
  private:
   SBSOptions options_;
   bool is_head_;
+  bool dispose_when_destruct_;
   BFile* pacesetter_;
   std::vector<LevelNode*> level_;
  public:
   // build head node.
   SBSNode(const SBSOptions& options, size_t height)
   : options_(options), 
-    is_head_(true),
+    is_head_(true), dispose_when_destruct_(true),
     pacesetter_(nullptr),
     level_({}) {
       for (size_t i = 0; i < height; ++i) {
@@ -42,16 +45,31 @@ struct SBSNode : public Printable {
   // build leaf node.
   SBSNode(const SBSOptions& options, SBSP next) 
   : options_(options), 
-    is_head_(false), 
+    is_head_(false), dispose_when_destruct_(true), 
     pacesetter_(nullptr), 
     level_({new LevelNode(options, next)}) {}
 
-  ~SBSNode() {
-    while (!level_.empty())
-      DecHeight();
-  }
+  // inherit one node.
+  // Warning: don't use this unless you know what you are doing.
+  SBSNode(SBSNode* node) : 
+    options_(node->options_),
+    is_head_(node->is_head_), dispose_when_destruct_(true),
+    pacesetter_(nullptr),
+    level_() {
+      node->SetManuallyDispose();
+      for (size_t i = 0; i < node->level_.size(); ++i)
+        level_.push_back(node->level_[i]);
+    }
 
-  BFile* Pacesetter() const { return pacesetter_; }
+  ~SBSNode() {
+    if (dispose_when_destruct_)
+      while (!level_.empty())
+        DecHeight();
+  }
+  void SetManuallyDispose() { dispose_when_destruct_ = 0; }
+
+  bool IsHead() const { return is_head_; }
+  BFile* Pacesetter() const { return is_head_ ? nullptr : pacesetter_; }
   Slice Guard() const { 
     if (is_head_) return "";
     return Pacesetter()->Min(); 
@@ -101,8 +119,8 @@ struct SBSNode : public Printable {
         return 1;
     return 0;
   }
- private:
   void SetNext(size_t k, SBSP next) { level_[k]->next_ = next; }
+ private:
   bool Overlap(size_t height, const Bounded& range) const {
     for (auto r : level_[height]->buffer_)
       if (r->Compare(range) == BOverlap) return true;

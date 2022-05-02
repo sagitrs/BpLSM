@@ -162,6 +162,10 @@ struct SBSIterator : public Printable {
     s_.Push(Coordinates(head_, head_->Height()-1)); 
     //recycler_.clear();
   }
+  void ReplaceHead(SBSNode* new_head) {
+    head_ = new_head;
+    SeekToRoot();
+  }
   void Next(size_t recursive = 1) {
     for (size_t i = 1; i <= recursive; ++i) {
       auto& curr = s_.Top();
@@ -182,6 +186,10 @@ struct SBSIterator : public Printable {
     for (size_t i = 1; i <= recursive; ++i)
       s_.Push(Coordinates(curr.node_, curr.height_ - i));
   }
+  void Float(size_t recursive = 1) {
+    for (size_t i = 0; i < recursive; ++i)
+      s_.Pop();
+  }
   Coordinates Current() const { return s_.Top(); }
   void SeekToFirst(int level) {
     SeekToRoot();
@@ -200,6 +208,7 @@ struct SBSIterator : public Printable {
     for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
       if (iter->Current() == target) {
         s_.SetToIterator(*iter);
+        delete iter;
         return 1;
       }
     }
@@ -228,6 +237,36 @@ struct SBSIterator : public Printable {
       if (!dive) break;
     }
   }
+  bool SeekCurrentPrev(std::vector<SBSNode*>& prev) {
+    CoordinatesStack s2(s_);
+    size_t size = s2.Bottom().node_->Height();
+    SBSNode* node = Current().node_;
+    assert(node != head_);
+    size_t height = Current().node_->Height();
+    
+    while (s2.Top().height_ < height) {
+      assert(s2.Top().node_ == node);
+      s2.Pop();
+    }
+    assert(s2.Size() == size - height);
+    for (int h = height-1; h >= 0; --h) {
+      SBSNode* p = p = s2.Top().node_; 
+      while (p && p->Next(h) != node) 
+        p = p->Next(h);
+      assert(p != nullptr);
+      s2.Push(Coordinates(p, h));
+    }
+    assert(s2.Size() == size);
+
+    prev.resize(size);
+    for (size_t i = 0; i < size; ++i) 
+      prev[s2[i].height_] = s2[i].node_;
+    for (size_t i = 0; i < height; ++i) 
+      assert(prev[i] && prev[i]->Next(i) == node);
+      //.push_back(s2[i].node_);
+    assert(prev.size() == size);
+    return 1;
+  }
   // Find elements on the path that exactly match the target object 
   // (including ranges and values).
   // Assert: Already SeekRange().
@@ -238,6 +277,7 @@ struct SBSIterator : public Printable {
       res = iter->Current().GetValue(id);
       if (res) {
         s_.SetToIterator(*iter);
+        delete iter;
         return res;
       }
     }
@@ -289,7 +329,6 @@ struct SBSIterator : public Printable {
     s_ = max_stack;
     return scorer.MaxScore();
   }
- private:
   bool CheckSplit(const SBSOptions& options) {
     auto iter = s_.NewIterator();
     bool update = false;
