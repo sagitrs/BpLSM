@@ -334,9 +334,12 @@ struct SBSkiplist {
  public:
   std::string ToString() const {
     std::stringstream ss;
-    //PrintSimple(ss);
+  #if defined(MINIMUM_BVERSION_PRINT)
+    PrintSimple(ss);
+  #else
     PrintList(ss);
     PrintStatistics(ss);
+  #endif
     //PrintStatistics(ss);
     return ss.str();
   }

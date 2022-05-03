@@ -166,7 +166,10 @@ struct SubSBS {
   }
   SBSNode* Build(const BFileEdit& edit) {
     bool ok = Confirm(edit.deleted_);
-    assert(ok);
+    if (!ok) {
+      bool ok2 = Confirm(edit.deleted_);
+      assert(ok2);  
+    }
     std::vector<FileGenData> gendata;
     Transform(edit.generated_, gendata);
     SBSNode* node = BuildWith(gendata);
