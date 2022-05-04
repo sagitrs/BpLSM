@@ -66,8 +66,8 @@ struct Coordinates {
   void GetCovers(BFileVec& results, const Slice& key) const {
     auto& buffer = node_->level_[height_]->buffer_;
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
-      auto& v = *i;
-      if (v->Min().compare(key) <= 0 && key.compare(v->Max()) <= 0)
+      Slice min((*i)->Min()), max((*i)->Max());
+      if (min.compare(key) <= 0 && key.compare(max) <= 0)
         results.Add(*i);
     }
   }
