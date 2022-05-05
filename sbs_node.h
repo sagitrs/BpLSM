@@ -27,14 +27,13 @@ struct SBSNode : public Printable {
  private:
   SBSOptions options_;
   bool is_head_;
-  bool dispose_when_destruct_;
   BFile* pacesetter_;
   std::vector<LevelNode*> level_;
  public:
   // build head node.
   SBSNode(const SBSOptions& options, size_t height)
   : options_(options), 
-    is_head_(true), dispose_when_destruct_(true),
+    is_head_(true), 
     pacesetter_(nullptr),
     level_({}) {
       for (size_t i = 0; i < height; ++i) {
@@ -45,28 +44,15 @@ struct SBSNode : public Printable {
   // build leaf node.
   SBSNode(const SBSOptions& options, SBSP next) 
   : options_(options), 
-    is_head_(false), dispose_when_destruct_(true), 
+    is_head_(false), 
     pacesetter_(nullptr), 
     level_({new LevelNode(options, next)}) {}
-
-  // inherit one node.
-  // Warning: don't use this unless you know what you are doing.
-  SBSNode(SBSNode* node) : 
-    options_(node->options_),
-    is_head_(node->is_head_), dispose_when_destruct_(true),
-    pacesetter_(nullptr),
-    level_() {
-      node->SetManuallyDispose();
-      for (size_t i = 0; i < node->level_.size(); ++i)
-        level_.push_back(node->level_[i]);
-    }
+  SBSNode(const SBSNode&) = delete;
 
   ~SBSNode() {
-    if (dispose_when_destruct_)
-      while (!level_.empty())
-        DecHeight();
+    while (!level_.empty())
+      DecHeight();
   }
-  void SetManuallyDispose() { dispose_when_destruct_ = 0; }
 
   bool IsHead() const { return is_head_; }
   BFile* Pacesetter() const { return is_head_ ? nullptr : pacesetter_; }

@@ -70,8 +70,9 @@ struct SBSkiplist {
     iter->GetBufferOnRoute(container, key);
     delete iter;
   }
-  SubSBS* LookupTree(const BFileEdit& edit, std::vector<SBSNode*>& prev) {
+  SubSBS* LookupTree(const BFileEdit& edit) {//, std::vector<SBSNode*>& prev
     auto iter = NewIterator();
+    std::vector<SBSNode*> prev;
     for (auto file : edit.deleted_) {
       RealBounded bound(file->smallest.user_key(),file->smallest.user_key());
       iter->SeekToRoot();
@@ -84,11 +85,11 @@ struct SBSkiplist {
       }
       SBSNode* node = iter->Current().node_;
       
-      if (!node->IsHead()) {
-        iter->SeekCurrentPrev(prev);
-        for (size_t i = 0; i < node->Height(); ++i)
-          assert(prev[i]->Next(i) == node);
-      }
+      //if (!node->IsHead()) {
+      //  iter->SeekCurrentPrev(prev);
+      //  for (size_t i = 0; i < node->Height(); ++i)
+      //    assert(prev[i]->Next(i) == node);
+      //}
       delete iter;
       return new SubSBS(node, height);
     }
