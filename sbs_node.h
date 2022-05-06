@@ -166,7 +166,8 @@ struct SBSNode : public Printable {
     }
     size_t width = Width(height);
     if (width > 50) {
-      std::cout << "Warning : Width ambigous = " << width << std::endl;
+      std::cout << "Warning : Width ambigous = " << width 
+        << "AT {" << Guard().ToString() << "," << height << "}" << std::endl;
     }
     return options.TestState(width, is_head_); 
   }

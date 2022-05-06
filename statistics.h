@@ -58,6 +58,7 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
     ttl_(ttl),
     create_time_(time),
     st_time_(time), ed_time_(time) {}
+  virtual ~TTLQueue() {}
   bool TimeLegal(int64_t time) const { return st_time_ <= time && time <= ed_time_; }
   int64_t size() const { return ed_time_ - st_time_ + 1; }
   int space() const { return ttl_ - size(); }

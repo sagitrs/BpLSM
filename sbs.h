@@ -167,6 +167,7 @@ struct SBSkiplist {
     double max_score = iter->SeekScore(scorer, baseline, true);
     if (containers)
       PickFilesByIterator(iter, containers);
+    delete iter;
     return max_score;
   }
  private:

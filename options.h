@@ -43,7 +43,7 @@ struct SBSNodeOptions {
 // Width limit of nodes:
  private:
  public:
-  static const size_t BaseWidth = 11;
+  static const size_t BaseWidth = 8;
   size_t width_[3] = {BaseWidth * 2 / 3, BaseWidth * 4 / 3};
   // The width of each layer of the node, except for the Head node, 
   // must not be LOWER than this value.

@@ -96,6 +96,7 @@ struct Coordinates {
 
 struct CoordinatesStack : private std::vector<Coordinates> {
  public: 
+  virtual ~CoordinatesStack() {}
   size_t Size() const { return std::vector<Coordinates>::size(); }
   bool Empty() const { return empty(); }
 
