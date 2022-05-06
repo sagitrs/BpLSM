@@ -129,6 +129,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   size_t MaxFileSize() const { return 4 * 1024 * 1024; }
   size_t Width() const { return SBSNodeOptions::BaseWidth; }
 
+  size_t kMaxHeight() const { return 6; }
  public:
   SBSOptions() = default;
   SBSOptions(const SBSOptions& options) = default;

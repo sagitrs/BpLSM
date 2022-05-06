@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <vector>
 #include <stack>
 #include <memory>
@@ -14,7 +15,7 @@ typedef BFileVec TypeBuffer;
 
 struct LevelNode : public Printable {
   // next node of this level.
-  SBSNode* next_;
+  std::atomic<SBSNode*> next_;
   // files that stored in this level.
   TypeBuffer buffer_;
   // temp variables.
@@ -78,7 +79,7 @@ struct LevelNode : public Printable {
     table_(stat_options) {}
   // Copy existing node.
   LevelNode(const LevelNode& node):
-    next_(node.next_),
+    next_(node.next_.load(std::memory_order_acquire)),
     buffer_(node.buffer_),
     table_(node.table_) {}
   ~LevelNode() {
@@ -104,7 +105,8 @@ struct LevelNode : public Printable {
   bool isDirty() const { return !buffer_.empty(); }
   //bool isStatisticsDirty() const { return table_.isDirty(); }
   void Absorb(LevelNode* target) { 
-    next_ = target->next_;
+    next_.store(target->next_, std::memory_order_release);
+    //next_ = target->next_;
     buffer_.AddAll(target->buffer_);
     table_.SetDirty();
   }

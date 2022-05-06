@@ -95,6 +95,18 @@ struct SubSBS {
           // so it shall has no overlap with any other files.
           oldchild.push_back(file);
         }
+    if (recursive_compaction_) {
+      nums.clear();
+      for (auto file : oldchild) nums.insert(file->Identifier());
+      for (auto child : children_) {
+        BFile* one = child->level_[0]->buffer_.GetOne();
+        if (nums.find(one->Identifier()) != nums.end()) {
+          // this node contains an old file. don't dispose this file.
+          auto res = child->Del(0, *one);
+          assert(res == one);
+        }
+      }
+    }
     return 1;
   }
   void Transform(const std::vector<FileMetaData*>& generated, 
@@ -166,8 +178,8 @@ struct SubSBS {
       assert(height_ == 1);
 
       // will be deleted when destructed.
-      for (auto& child : children_)
-        nodes_.push_back(child);
+      //for (auto& child : children_)
+      //  nodes_.push_back(child);
 
       SBSNode* next = head_->Next(height_);
       for (int i = files.size() - 1; i > 0; --i) {

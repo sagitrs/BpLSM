@@ -22,7 +22,7 @@ struct SBSkiplist {
  public:
   SBSkiplist(const SBSOptions& options) 
   : options_(options),
-    head_(new SBSNode(options_, 6)) {}
+    head_(new SBSNode(options_, options_.kMaxHeight())) {}
   inline SBSIterator* NewIterator() const { return new SBSIterator(head_); }
   
   ~SBSkiplist() {

@@ -10,6 +10,7 @@
 #include "options.h"
 #include "statistics.h"
 #include "level_node.h"
+#include <atomic>
 namespace sagitrs {
 
 struct SBSIterator;
@@ -27,17 +28,21 @@ struct SBSNode : public Printable {
  private:
   SBSOptions options_;
   bool is_head_;
-  BFile* pacesetter_;
-  std::vector<LevelNode*> level_;
+
+  std::atomic<int> height_;
+  std::array<LevelNode*, 6> level_;
+
+  std::atomic<BFile*> pacesetter_;
  public:
   // build head node.
   SBSNode(const SBSOptions& options, size_t height)
   : options_(options), 
     is_head_(true), 
-    pacesetter_(nullptr),
-    level_({}) {
+    height_(height),
+    level_(),
+    pacesetter_(nullptr) {
       for (size_t i = 0; i < height; ++i) {
-        level_.push_back(new LevelNode(options, nullptr));
+        level_[i] = (new LevelNode(options, nullptr));
       }
       Rebound();
     }
@@ -45,27 +50,35 @@ struct SBSNode : public Printable {
   SBSNode(const SBSOptions& options, SBSP next) 
   : options_(options), 
     is_head_(false), 
-    pacesetter_(nullptr), 
-    level_({new LevelNode(options, next)}) {}
+    height_(1),
+    level_({new LevelNode(options, next)}),
+    pacesetter_(nullptr) {}
   SBSNode(const SBSNode&) = delete;
 
   ~SBSNode() {
-    while (!level_.empty())
+    for (size_t i = Height(); i > 0; --i)
       DecHeight();
   }
 
   bool IsHead() const { return is_head_; }
-  BFile* Pacesetter() const { return is_head_ ? nullptr : pacesetter_; }
+  BFile* Pacesetter() const { 
+    return is_head_ ? nullptr : 
+      pacesetter_.load(std::memory_order_acquire); 
+  }
+  void SetPacesetter(BFile* file) {
+    pacesetter_.store(file, std::memory_order_release);
+  }
   Slice Guard() const { 
     if (is_head_) return "";
     return Pacesetter()->Min(); 
   }
-  size_t Height() const { return level_.size(); } 
+  size_t Height() const { return height_.load(std::memory_order_acquire); } 
+  void SetHeight(size_t h) { height_.store(h, std::memory_order_release); }
   SBSP Next(size_t k, size_t recursive = 1) const { 
-    SBSP next = level_[k]->next_;
+    SBSP next = level_[k]->next_.load(std::memory_order_acquire);
     for (size_t i = 1; i < recursive; ++i) {
       assert(next != nullptr && next->Height() >= k);
-      next = next->level_[k]->next_; 
+      next = next->level_[k]->next_.load(std::memory_order_acquire); 
     }
     return next;
   }
@@ -105,7 +118,9 @@ struct SBSNode : public Printable {
         return 1;
     return 0;
   }
-  void SetNext(size_t k, SBSP next) { level_[k]->next_ = next; }
+  void SetNext(size_t k, SBSP next) { 
+    level_[k]->next_.store(next,std::memory_order_release); 
+  }
  private:
   bool Overlap(size_t height, const Bounded& range) const {
     for (auto r : level_[height]->buffer_)
@@ -116,16 +131,22 @@ struct SBSNode : public Printable {
     if (is_head_) {
       return;
     }
-    for (auto node : level_)
-      for (auto range : node->buffer_)
-        if (pacesetter_ == nullptr || range->Min().compare(pacesetter_->Min()) < 0) { 
-          pacesetter_ = range; 
+    BFile* pace = Pacesetter();
+    BFile* res = pace;
+    size_t h = Height();
+    for (size_t i = 0; i < h; ++i)
+      for (auto range : level_[i]->buffer_)
+        if (res == nullptr || range->Min().compare(res->Min()) < 0) { 
+          res = range; 
         }
+    if (pace != res)
+      SetPacesetter(res);
   }
   bool Empty() const {
     bool blank = true;
-    for (auto node : level_)
-      if (!node->buffer_.empty())
+    size_t h = Height();
+    for (size_t i = 0; i < h; ++i)
+      if (!level_[i]->buffer_.empty())
         return 0;
     return 1;
   }
@@ -164,10 +185,10 @@ struct SBSNode : public Printable {
     }
     return 1;
   }
-  void Add(const SBSOptions& options, size_t height, ValuePtr range) {
-    level_[height]->Add(range);
-    if (pacesetter_ == nullptr || Guard().compare(range->Min()) > 0)
-      pacesetter_ = range;
+  void Add(const SBSOptions& options, size_t height, ValuePtr file) {
+    level_[height]->Add(file);
+    if (Pacesetter() == nullptr || Guard().compare(file->Min()) > 0)
+      SetPacesetter(file);
   }
   BFile* Del(size_t height, const BFile& range) {
     auto res = level_[height]->Del(range);
@@ -177,10 +198,16 @@ struct SBSNode : public Printable {
     return res;
   }
   void DecHeight() {
-    assert(!level_.empty()); 
-    auto last = *level_.rbegin();
+    size_t h = Height();
+    assert(h > 0); 
+    auto last = level_[h - 1];
+    SetHeight(h - 1);
     delete last;
-    level_.pop_back(); 
+  }
+  void IncHeight(LevelNode* lnode) {
+    size_t h = Height();
+    level_[h] = lnode;
+    SetHeight(h + 1);
   }
   const Statistics* GetNodeStatistics(size_t height) { return level_[height]->buffer_.GetStatistics(); }
   
@@ -274,7 +301,7 @@ struct SBSNode : public Printable {
           for (auto& v : *force)
             level_[height]->Del(*v);
       }
-      middle->level_.push_back(tmp); 
+      middle->IncHeight(tmp); 
       SetNext(height, middle);
       // if this node is root node, increase height.
       if (is_head_ && height + 1 == Height()) {
