@@ -84,14 +84,15 @@ struct SBSkiplist {
         height = iter->Current().height_; 
       }
       SBSNode* node = iter->Current().node_;
-      
+      iter->Prev();
+      SBSNode* prev = iter->Current().node_;
       //if (!node->IsHead()) {
       //  iter->SeekCurrentPrev(prev);
       //  for (size_t i = 0; i < node->Height(); ++i)
       //    assert(prev[i]->Next(i) == node);
       //}
       delete iter;
-      return new SubSBS(node, height);
+      return new SubSBS(node, height, prev);
     }
     // no level 0 files are included.
     delete iter;
@@ -389,8 +390,9 @@ struct SBSkiplist {
       SBSIterator iter(head_);
       iter.SeekNode(coord);
       iter.Prev();
-      if (iter.Valid() && iter.Current().Next() == coord.node_)
-        iter.CheckAbsorbEmptyNext(options_);
+      iter.CheckAbsorbOnlyNext(options_);
+      //if (iter.Valid() && iter.Current().Next() == coord.node_)
+      //  iter.CheckAbsorbEmptyNext(options_);
     }
   }
 };

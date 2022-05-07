@@ -78,8 +78,6 @@ struct Scorer {
   size_t Height() const { return height_; }
   size_t Width(size_t depth = 1) const { 
     size_t res = node_->GeneralWidth(height_, depth); 
-    //if (res < Options()->MinWidth())
-    //  res = node_->GeneralWidth(height_, 2);
     return res;
   }
   BFileVec& Buffer() const { return node_->GetLevel(height_)->buffer_; }

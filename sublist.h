@@ -22,7 +22,7 @@ struct SubSBS {
     }
   };
  private:
-  SBSNode* head_;
+  SBSNode *head_, *prev_;
   size_t height_;
   std::vector<SBSNode*> children_;
 
@@ -33,8 +33,9 @@ struct SubSBS {
   bool recursive_compaction_;
 
  public:
-  SubSBS(SBSNode* head, size_t height)
-  : head_(head), height_(height), children_(), 
+  SubSBS(SBSNode* head, size_t height, SBSNode* prev)
+  : head_(head), prev_(prev), height_(height), 
+    children_(), 
     lnodes_(), nodes_(), 
     files_(), recursive_compaction_(height == 1) 
   {
@@ -165,7 +166,7 @@ struct SubSBS {
   void Replace(SBSNode* node, size_t height, LevelNode* lnode) {
     lnodes_.push_back(node->GetLevel(height));
     node->SetLevel(height, lnode);
-    node->Rebound();
+    if (lnode) node->Rebound();
   }
   bool BuildWith(const std::vector<BFile*>& files) {
     if (recursive_compaction_) {
@@ -215,8 +216,15 @@ struct SubSBS {
       }
     }
     SBSNode* next = head_->Next(height_);
-    auto lnode = BuildLNode(nullptr, nullptr, next);
-    Replace(head_, height_, lnode);
+    if (head_->Height() == height_ + 1 && head_->TestState(Options(), height_) < 0) {
+      // this lnode is better to be deleted.
+      prev_->SetNext(height_, next);
+      Replace(head_, height_, nullptr);
+      head_->DecHeight();
+    } else {
+      auto lnode = BuildLNode(nullptr, nullptr, next);
+      Replace(head_, height_, lnode);
+    }    
     return 1;
   }
   bool Build(const BFileEdit& edit) {

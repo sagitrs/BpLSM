@@ -41,7 +41,7 @@ TEST(SBSTest, Simple) {
   }
   RealBounded bound("70", "70");
   sagitrs::BFileVec container[3];
-  list.Lookup(bound, container[0]);
+  list.LookupKey(bound, container[0]);
 
   ASSERT_EQ(container[0].size(), 2);
   //---------------------------------------

@@ -536,17 +536,25 @@ struct SBSIterator : public Printable {
     }
     SeekToRoot();
   }
-  void CheckAbsorbEmptyNext(const SBSOptions& options) {
+  void CheckAbsorbOnlyNext(const SBSOptions& options) {
     CoordinatesStack s2(s_);
     for (auto target = s2.Pop(); s2.Size() > 1; target = s2.Pop()) {
       size_t height = target.height_;
       auto next = target.Next();
-      if (target.TestState(options) < 0 && 
-          next != nullptr &&
-          next->GetLevel(height)->buffer_.size() == 0 &&
-          next->Height() == height + 1) {
-        target.node_->SetNext(height, next->Next(height));
+      
+      bool need_absorb = target.TestState(options);
+      bool could_absorb = next != nullptr && next->Height() == height + 1;
+      if (!need_absorb || !could_absorb) return;
+      {
+        auto oldlnode = target.node_->GetLevel(height);
+        auto newlnode = new LevelNode(*next->GetLevel(height));
+        newlnode->buffer_.AddAll(oldlnode->buffer_);
+
+        target.node_->SetLevel(height, newlnode);
         next->DecHeight();
+        delete oldlnode;
+        target.node_->Rebound();
+        next->Rebound();
       }
     }
   }
