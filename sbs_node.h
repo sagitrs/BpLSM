@@ -30,7 +30,7 @@ struct SBSNode : public Printable {
   bool is_head_;
 
   std::atomic<int> height_;
-  std::array<LevelNode*, 6> level_;
+  std::array<std::atomic<LevelNode*>, 6> level_;
 
   std::atomic<BFile*> pacesetter_;
  public:
@@ -42,7 +42,7 @@ struct SBSNode : public Printable {
     level_(),
     pacesetter_(nullptr) {
       for (size_t i = 0; i < height; ++i) {
-        level_[i] = (new LevelNode(options, nullptr));
+        SetLevel(i, new LevelNode(options, nullptr));
       }
       Rebound();
     }
@@ -51,8 +51,10 @@ struct SBSNode : public Printable {
   : options_(options), 
     is_head_(false), 
     height_(1),
-    level_({new LevelNode(options, next)}),
-    pacesetter_(nullptr) {}
+    level_(),
+    pacesetter_(nullptr) {
+      SetLevel(0, new LevelNode(options, next));
+    }
   SBSNode(const SBSNode&) = delete;
 
   ~SBSNode() {
@@ -68,6 +70,12 @@ struct SBSNode : public Printable {
   void SetPacesetter(BFile* file) {
     pacesetter_.store(file, std::memory_order_release);
   }
+  void SetLevel(size_t k, LevelNode* node) {
+    level_[k].store(node, std::memory_order_release);
+  }
+  LevelNode* GetLevel(size_t height) const { 
+    return level_[height].load(std::memory_order_acquire); 
+  }
   Slice Guard() const { 
     if (is_head_) return "";
     return Pacesetter()->Min(); 
@@ -75,14 +83,13 @@ struct SBSNode : public Printable {
   size_t Height() const { return height_.load(std::memory_order_acquire); } 
   void SetHeight(size_t h) { height_.store(h, std::memory_order_release); }
   SBSP Next(size_t k, size_t recursive = 1) const { 
-    SBSP next = level_[k]->next_.load(std::memory_order_acquire);
+    SBSP next = GetLevel(k)->next_.load(std::memory_order_acquire);
     for (size_t i = 1; i < recursive; ++i) {
       assert(next != nullptr && next->Height() >= k);
-      next = next->level_[k]->next_.load(std::memory_order_acquire); 
+      next = next->GetLevel(k)->next_.load(std::memory_order_acquire); 
     }
     return next;
   }
-  LevelNode* LevelAt(size_t height) const { return level_[height]; }
  public:
   size_t Width(size_t height) const {
     if (height == 0) return 0;
@@ -111,19 +118,19 @@ struct SBSNode : public Printable {
   bool HasEmptyChild(size_t height) const {
     if (height == 0) return 0;
     SBSP ed = Next(height);
-    if (level_[height - 1]->buffer_.empty())
+    if (GetLevel(height - 1)->buffer_.empty())
       return 1;
     for (SBSP next = Next(height - 1); next != ed; next = next->Next(height - 1)) 
-      if (next->level_[height - 1]->buffer_.empty())
+      if (next->GetLevel(height - 1)->buffer_.empty())
         return 1;
     return 0;
   }
   void SetNext(size_t k, SBSP next) { 
-    level_[k]->next_.store(next,std::memory_order_release); 
+    GetLevel(k)->next_.store(next,std::memory_order_release); 
   }
  private:
   bool Overlap(size_t height, const Bounded& range) const {
-    for (auto r : level_[height]->buffer_)
+    for (auto r : GetLevel(height)->buffer_)
       if (r->Compare(range) == BOverlap) return true;
     return false;
   }
@@ -135,7 +142,7 @@ struct SBSNode : public Printable {
     BFile* res = pace;
     size_t h = Height();
     for (size_t i = 0; i < h; ++i)
-      for (auto range : level_[i]->buffer_)
+      for (auto range : GetLevel(i)->buffer_)
         if (res == nullptr || range->Min().compare(res->Min()) < 0) { 
           res = range; 
         }
@@ -146,7 +153,7 @@ struct SBSNode : public Printable {
     bool blank = true;
     size_t h = Height();
     for (size_t i = 0; i < h; ++i)
-      if (!level_[i]->buffer_.empty())
+      if (!GetLevel(i)->buffer_.empty())
         return 0;
     return 1;
   }
@@ -156,8 +163,8 @@ struct SBSNode : public Printable {
   // return 0 if this node doesn't need change immediately.
   int TestState(const SBSOptions& options, size_t height) const { 
     if (height == 0) {
-      if (level_[height]->buffer_.size() > 1) return 1;
-      if (level_[height]->buffer_.size() == 0) {
+      if (GetLevel(height)->buffer_.size() > 1) return 1;
+      if (GetLevel(height)->buffer_.size() == 0) {
         if (is_head_)
           return Next(0) && Next(0)->Height() == 1 ? -1 : 0;
         return -1;
@@ -180,19 +187,19 @@ struct SBSNode : public Printable {
     int cmp2 = next == nullptr ? -1 : range.Max().compare(next->Guard());
     if (cmp2 >= 0) return 0;
     if (!no_overlap) return 1;
-    for (auto r : level_[height]->buffer_) {
+    for (auto r : GetLevel(height)->buffer_) {
       if (r->Compare(range) == BOverlap)
         return 0;
     }
     return 1;
   }
   void Add(const SBSOptions& options, size_t height, ValuePtr file) {
-    level_[height]->Add(file);
+    GetLevel(height)->Add(file);
     if (Pacesetter() == nullptr || Guard().compare(file->Min()) > 0)
       SetPacesetter(file);
   }
   BFile* Del(size_t height, const BFile& range) {
-    auto res = level_[height]->Del(range);
+    auto res = GetLevel(height)->Del(range);
     if (Guard().compare(range.Min()) == 0)
       Rebound();
     res->SetDeletedLevel(height);
@@ -201,22 +208,23 @@ struct SBSNode : public Printable {
   void DecHeight() {
     size_t h = Height();
     assert(h > 0); 
-    auto last = level_[h - 1];
+    auto last = GetLevel(h - 1);
     SetHeight(h - 1);
+    SetLevel(h - 1, nullptr);
     delete last;
   }
   void IncHeight(LevelNode* lnode) {
     size_t h = Height();
-    level_[h] = lnode;
+    SetLevel(h, lnode);
     SetHeight(h + 1);
   }
-  const Statistics* GetNodeStatistics(size_t height) { return level_[height]->buffer_.GetStatistics(); }
+  const Statistics* GetNodeStatistics(size_t height) { return GetLevel(height)->buffer_.GetStatistics(); }
   
   BFile* GetHottest(size_t height, int64_t time) {
     if (height == 0) 
-      return level_[0]->buffer_.GetOne(); 
+      return GetLevel(0)->buffer_.GetOne(); 
     
-    auto &h = level_[height]->table_.hottest_;
+    auto &h = GetLevel(height)->table_.hottest_;
     if (h != nullptr)
       return h;
 
@@ -231,9 +239,9 @@ struct SBSNode : public Printable {
   }
   const Statistics* GetTreeStatistics(size_t height) {
     if (height == 0) 
-      return level_[0]->buffer_.GetStatistics();
+      return GetLevel(0)->buffer_.GetStatistics();
     
-    Statistics* s = level_[height]->table_.stats_;
+    Statistics* s = GetLevel(height)->table_.stats_;
     if (!s) return s;
     
     std::vector<const Statistics*> ss;
@@ -249,14 +257,14 @@ struct SBSNode : public Printable {
         s->MergeStatistics(*stat);
     }
     
-    level_[height]->table_.SetDirty(false);
+    GetLevel(height)->table_.SetDirty(false);
     return s;
   }
  private:
  public:
   bool SplitNext(const SBSOptions& options, size_t height, BFileVec* force = nullptr) {
     if (height == 0) {
-      auto &a = level_[0]->buffer_;
+      auto &a = GetLevel(0)->buffer_;
       assert(a.size() == 2);
       auto tmp = new SBSNode(options_, Next(0));
       auto v = *a.rbegin();
@@ -265,7 +273,7 @@ struct SBSNode : public Printable {
       Del(0, *v);
       return 1;
     } else {
-      //assert(!level_[height]->isDirty());
+      //assert(!GetLevel(height)->isDirty());
       size_t width = Width(height);
       assert(options.TestState(width, is_head_) > 0);
       size_t reserve = width - options.DefaultWidth();
@@ -276,14 +284,14 @@ struct SBSNode : public Printable {
       {
         // Check dirty problem.
         RealBounded div(middle->Guard(), middle->Guard());
-        for (auto& v : level_[height]->buffer_) {
+        for (auto& v : GetLevel(height)->buffer_) {
           BCP cmp = v->Compare(div);
           if (cmp == BLess) {
             // reserve in current node.
           } else if (cmp == BGreater) {
             // move to next node. 
             tmp->Add(v);
-            //level_[height]->Del(v);
+            //GetLevel(height)->Del(v);
           } else {
             // dirty.
             assert(cmp == BOverlap);
@@ -297,10 +305,10 @@ struct SBSNode : public Printable {
           }
         }
         for (auto& v : tmp->buffer_)
-          level_[height]->Del(*v);
+          GetLevel(height)->Del(*v);
         if (force)
           for (auto& v : *force)
-            level_[height]->Del(*v);
+            GetLevel(height)->Del(*v);
       }
       middle->IncHeight(tmp); 
       SetNext(height, middle);
@@ -308,7 +316,7 @@ struct SBSNode : public Printable {
       if (is_head_ && height + 1 == Height()) {
         assert(false && "Error : try to increase tree height.");
         assert(next == nullptr);
-        //IncHeight(level_[height]->node_stats_, nullptr);
+        //IncHeight(GetLevel(height)->node_stats_, nullptr);
       }
       return 1;
     }
@@ -318,7 +326,7 @@ struct SBSNode : public Printable {
     assert(next != nullptr);
     assert(next->Height() == height+1);
     
-    level_[height]->Absorb(next->level_[height]);
+    GetLevel(height)->Absorb(next->GetLevel(height));
     Rebound();
     next->DecHeight();
   }
@@ -338,7 +346,7 @@ struct SBSNode : public Printable {
     size_t max_lines = 0;
     for (size_t i = 0; i < Height(); ++i) {
       std::vector<KVPair> snapshot;
-      level_[i]->GetStringSnapshot(snapshot);
+      GetLevel(i)->GetStringSnapshot(snapshot);
       for (auto& kv : snapshot) info[i].emplace_back(kv.first+"="+kv.second);
       if (info[i].size() > max_lines) max_lines = info[i].size();
     }

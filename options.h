@@ -43,16 +43,16 @@ struct SBSNodeOptions {
 // Width limit of nodes:
  private:
  public:
-  static const size_t BaseWidth = 8;
-  size_t width_[3] = {BaseWidth * 2 / 3, BaseWidth * 4 / 3};
+  static const size_t BaseWidth = 11;
+  size_t width_[3] = {BaseWidth * 2 / 3, BaseWidth, BaseWidth * 4 / 3};
   // The width of each layer of the node, except for the Head node, 
   // must not be LOWER than this value.
   size_t MinWidth() const { return width_[0]; }
   // The width of each layer of the node, except for the Head node,
   // must not be HIGHER than this value.
-  size_t MaxWidth() const { return width_[1]; }
+  size_t MaxWidth() const { return width_[2]; }
   // The default width of the current node after splitting.
-  size_t DefaultWidth() const { return width_[0]; }
+  size_t DefaultWidth() const { return width_[1]; }
 
   double needs_compaction_score_ = 1;
   size_t max_compaction_files_ = 30;

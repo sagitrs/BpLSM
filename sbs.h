@@ -137,7 +137,7 @@ struct SBSkiplist {
     auto ed = iter->Current(); ed.JumpNext(); ed.JumpDown();
 
     for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
-      auto& l0buffer = c.node_->LevelAt(0)->buffer_;
+      auto& l0buffer = c.node_->GetLevel(0)->buffer_;
       if (l0buffer.size() == 0) continue;
       auto l0file = l0buffer.at(0);
       //auto pacesster
@@ -211,7 +211,7 @@ struct SBSkiplist {
         BFileVec children;
         node->GetChildGuard(h, &children);
         //iter->GetChildGuardInCurrent(children);
-        auto& buffer = node->LevelAt(h)->buffer_;
+        auto& buffer = node->GetLevel(h)->buffer_;
         for (auto value : buffer) {
           NodeStatus::ValueStatus vs;
           vs.width_ = children.GetValueWidth(value);
@@ -296,7 +296,7 @@ struct SBSkiplist {
       auto height = iter->Current().node_->Height();
       std::vector<size_t> height_state;
       for (size_t i = 0; i < height; ++i)
-        height_state.push_back(iter->Current().node_->LevelAt(i)->buffer_.size());
+        height_state.push_back(iter->Current().node_->GetLevel(i)->buffer_.size());
       map.push_back(height_state);
       if (height > maxh) maxh = height;
     }
@@ -373,14 +373,25 @@ struct SBSkiplist {
     for (auto node = head_; node != nullptr; node = node->Next(0)) {
       size_t height = node->Height();
       for (size_t h = 1; h < height; ++h)
-        node->LevelAt(h)->table_.hottest_ = nullptr;
+        node->GetLevel(h)->table_.hottest_ = nullptr;
     }
   }
 
-  void CheckSplit(Coordinates coord) {
+  bool CheckSplit(Coordinates coord) {
     SBSIterator iter(head_);
     iter.SeekNode(coord);
-    iter.CheckSplit(options_);
+    return iter.CheckSplit(options_);
+  }
+  void CheckAbsorb(Coordinates coord) {
+    if (coord.height_ + 1 != coord.node_->Height()) 
+      return; 
+    {
+      SBSIterator iter(head_);
+      iter.SeekNode(coord);
+      iter.Prev();
+      if (iter.Valid() && iter.Current().Next() == coord.node_)
+        iter.CheckAbsorbEmptyNext(options_);
+    }
   }
 };
 

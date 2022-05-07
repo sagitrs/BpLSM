@@ -11,6 +11,7 @@ namespace sagitrs {
 
 struct Counter : public std::array<int64_t, DefaultCounterTypeMax>, public Printable {
   Counter() : std::array<int64_t, DefaultCounterTypeMax>() {}
+  virtual ~Counter() {}
   using std::array<int64_t, DefaultCounterTypeMax>::operator[];
   void clear() {
     for (size_t i = 0; i < DefaultCounterTypeMax; ++i)

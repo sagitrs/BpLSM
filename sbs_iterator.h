@@ -30,7 +30,7 @@ struct Coordinates {
   }
   void Add(const SBSOptions& options, SBSNode::ValuePtr range) const { node_->Add(options, height_, range); }
   bool Contains(const BFile& value) const { 
-    return node_->level_[height_]->Contains(value); 
+    return node_->GetLevel(height_)->Contains(value); 
   }
   bool SplitNext(const SBSOptions& options, BFileVec* force = nullptr) { 
     return node_->SplitNext(options, height_, force); 
@@ -48,11 +48,11 @@ struct Coordinates {
     return node_->GetTreeStatistics(height_); }
   const Statistics* GetNodeStatistics() { 
     return node_->GetNodeStatistics(height_); }
-  void SetStatisticsDirty() { node_->level_[height_]->table_.SetDirty(); }
+  void SetStatisticsDirty() { node_->GetLevel(height_)->table_.SetDirty(); }
   //bool operator ==(const Coordinates& b) { return node_ == b.node_; }
-  bool IsDirty() const { return node_->level_[height_]->isDirty(); }
+  bool IsDirty() const { return node_->GetLevel(height_)->isDirty(); }
   void GetRanges(BFileVec& results, const Bounded* key = nullptr) {
-    auto& buffer = node_->level_[height_]->buffer_;
+    auto& buffer = node_->GetLevel(height_)->buffer_;
     auto now = node_->options_.NowTimeSlice();
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
       if (key == nullptr || (*i)->Compare(*key) == BOverlap) {
@@ -64,7 +64,7 @@ struct Coordinates {
     }
   }
   void GetCovers(BFileVec& results, const Slice& key) const {
-    auto& buffer = node_->level_[height_]->buffer_;
+    auto& buffer = node_->GetLevel(height_)->buffer_;
     for (auto i = buffer.begin(); i != buffer.end(); ++i) {
       Slice min((*i)->Min()), max((*i)->Max());
       if (min.compare(key) <= 0 && key.compare(max) <= 0)
@@ -72,17 +72,17 @@ struct Coordinates {
     }
   }
   BFile* GetValue(uint64_t id) {
-    auto& buffer = node_->level_[height_]->buffer_;
+    auto& buffer = node_->GetLevel(height_)->buffer_;
     for (auto i = buffer.begin(); i != buffer.end(); ++i)
       if ((*i)->Identifier() == id) 
         return *i;
     return nullptr;
   }
-  BFileVec& Buffer() { return node_->level_[height_]->buffer_; }
+  BFileVec& Buffer() { return node_->GetLevel(height_)->buffer_; }
   BFile* GetHottest(int64_t time) { 
     return node_->GetHottest(height_, time); 
   }
-  LevelNode::VariableTable& Table() { return node_->level_[height_]->table_; }
+  LevelNode::VariableTable& Table() { return node_->GetLevel(height_)->table_; }
   std::string ToString() const {
     std::string node = node_->Guard().ToString();
     std::string height = std::to_string(height_);
@@ -180,7 +180,21 @@ struct SBSIterator : public Printable {
         s_.reverse_at(h - h1) = Coordinates(curr.node_, h);
     }
   }
-  virtual void Prev(size_t recursive = 1) { assert(false); }
+  virtual void Prev(size_t recursive = 1) { 
+    Coordinates c(s_.Top());
+    if (c.node_ == head_) {
+      s_.Top().node_ = nullptr;
+      return ;
+    }
+    while (s_.Top().node_ == c.node_) 
+      s_.Pop();
+    while (s_.Top().height_ > c.height_) {
+      Dive();
+      while(s_.Top().Next() != c.node_) 
+        s_.Top().JumpNext();
+    } 
+    assert(s_.Top().height_ == c.height_);
+  }
   void Dive(size_t recursive = 1) {
     auto curr = s_.Top();
     assert(curr.height_ > 0);
@@ -477,11 +491,17 @@ struct SBSIterator : public Printable {
 
     // for leaf node:
     // check if recursively absorb is triggered.
-    for (target = s_.Pop(); s_.Size() > 1; target = s_.Pop()) {
+    CheckAbsorb(options);
+
+    return res;
+  }
+
+  void CheckAbsorb(const SBSOptions& options) {
+    for (auto target = s_.Pop(); s_.Size() > 1; target = s_.Pop()) {
       size_t height = target.height_;
       auto st = s_.Top().DownNode(), ed = s_.Top().NextNode().DownNode();
 
-      if ( target.TestState(options) < 0) {
+      if (target.TestState(options) < 0) {
         // begin absorbing.
         Coordinates prev = st, next = target.NextNode();
         if (!(target == st)) { 
@@ -515,7 +535,20 @@ struct SBSIterator : public Printable {
       }
     }
     SeekToRoot();
-    return res;
+  }
+  void CheckAbsorbEmptyNext(const SBSOptions& options) {
+    CoordinatesStack s2(s_);
+    for (auto target = s2.Pop(); s2.Size() > 1; target = s2.Pop()) {
+      size_t height = target.height_;
+      auto next = target.Next();
+      if (target.TestState(options) < 0 && 
+          next != nullptr &&
+          next->GetLevel(height)->buffer_.size() == 0 &&
+          next->Height() == height + 1) {
+        target.node_->SetNext(height, next->Next(height));
+        next->DecHeight();
+      }
+    }
   }
 
   virtual void GetStringSnapshot(std::vector<KVPair>& snapshot) const override {

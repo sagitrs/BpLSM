@@ -82,8 +82,8 @@ struct Scorer {
     //  res = node_->GeneralWidth(height_, 2);
     return res;
   }
-  BFileVec& Buffer() const { return node_->level_[height_]->buffer_; }
-  size_t BufferSize() const { return node_->level_[height_]->buffer_.size(); }
+  BFileVec& Buffer() const { return node_->GetLevel(height_)->buffer_; }
+  size_t BufferSize() const { return node_->GetLevel(height_)->buffer_.size(); }
   const GlobalStatus& Global() const { return *status_; }
   const Statistics& GetStatistics() { 
     return *node_->GetTreeStatistics(height_); 

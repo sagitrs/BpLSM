@@ -26,7 +26,7 @@ struct SubSBS {
   size_t height_;
   std::vector<SBSNode*> children_;
 
-  std::vector<BFile*> level_[2];
+  std::vector<BFile*> files_[2];
   
   std::vector<LevelNode*> lnodes_;
   std::vector<SBSNode*> nodes_;
@@ -36,12 +36,12 @@ struct SubSBS {
   SubSBS(SBSNode* head, size_t height)
   : head_(head), height_(height), children_(), 
     lnodes_(), nodes_(), 
-    level_(), recursive_compaction_(height == 1) 
+    files_(), recursive_compaction_(height == 1) 
   {
     auto next = head->Next(height);
     for (SBSNode* node = head_->Next(height-1); node != next; node = node->Next(height-1))
       children_.push_back(node);
-    CollectFiles(level_[0], level_[1]);
+    CollectFiles(files_[0], files_[1]);
   }
   ~SubSBS() { 
     // files in lnode shall not be deleted, since handle is inherited by new node.
@@ -64,25 +64,25 @@ struct SubSBS {
   size_t Height() const { return height_; }
   const SBSOptions& Options() const { return head_->options_; }
   void CollectFiles(std::vector<BFile*>& level0, std::vector<BFile*>& level1) const {
-    for (BFile* file : head_->LevelAt(height_)->buffer_)
+    for (BFile* file : head_->GetLevel(height_)->buffer_)
       level1.push_back(file);
     if (recursive_compaction_) {
-      auto file = head_->LevelAt(height_ - 1)->buffer_.GetOne();
+      auto file = head_->GetLevel(height_ - 1)->buffer_.GetOne();
       if (file) level0.push_back(file);
       for (SBSNode* node : children_) {
-        auto file = node->LevelAt(height_ - 1)->buffer_.GetOne();
+        auto file = node->GetLevel(height_ - 1)->buffer_.GetOne();
         if (file) level0.push_back(file);
       }
     }
   }
   bool PickOldFiles(const std::vector<FileMetaData*>& files, std::vector<BFile*>& oldchild) const {
-    if (files.size() != level_[0].size() + level_[1].size())
-      assert(level_[0].size() > 0);
+    if (files.size() != files_[0].size() + files_[1].size())
+      assert(files_[0].size() > 0);
     
     std::set<uint64_t> nums;
     for (auto file : files) nums.insert(file->number);
     for (size_t l = 0; l < 2; ++l)
-      for (auto file : level_[l]) 
+      for (auto file : files_[l]) 
         if (nums.find(file->Data()->number) == nums.end()) {
           assert(l == 0);
           if (l == 1) return 0;
@@ -99,7 +99,7 @@ struct SubSBS {
       nums.clear();
       for (auto file : oldchild) nums.insert(file->Identifier());
       for (auto child : children_) {
-        BFile* one = child->level_[0]->buffer_.GetOne();
+        BFile* one = child->GetLevel(0)->buffer_.GetOne();
         if (nums.find(one->Identifier()) != nums.end()) {
           // this node contains an old file. don't dispose this file.
           auto res = child->Del(0, *one);
@@ -119,7 +119,7 @@ struct SubSBS {
       FileGenData gd; gd.f = meta;
       Slice min(meta->smallest.user_key());
       Slice max(meta->largest.user_key());
-      for (auto& d : level_[0]) {
+      for (auto& d : files_[0]) {
         Slice key(d->Data()->smallest.user_key());
         if (min.compare(key) <= 0 && key.compare(max) < 0) {
           gd.inherit.push_back(d);
@@ -149,8 +149,8 @@ struct SubSBS {
     //list_.Reinsert();
   }
   void CleanUp(SBSNode* node, size_t height) {
-    auto old = node->level_[height];
-    node->level_[height] = new LevelNode(Options(), old->next_);
+    auto old = node->GetLevel(height);
+    node->SetLevel(height, new LevelNode(Options(), old->next_));
   }
   LevelNode* BuildLNode(LevelNode* base, BFile* file, SBSNode* next) {
     auto node = (base != nullptr ? 
@@ -163,8 +163,8 @@ struct SubSBS {
     return node;
   }
   void Replace(SBSNode* node, size_t height, LevelNode* lnode) {
-    lnodes_.push_back(node->level_[height]);
-    node->level_[height] = lnode;
+    lnodes_.push_back(node->GetLevel(height));
+    node->SetLevel(height, lnode);
     node->Rebound();
   }
   bool BuildWith(const std::vector<BFile*>& files) {
@@ -214,7 +214,7 @@ struct SubSBS {
         //curr->Add(Options(), height_ - 1, f);
       }
     }
-    SBSNode* next = head_->level_[height_]->next_;
+    SBSNode* next = head_->Next(height_);
     auto lnode = BuildLNode(nullptr, nullptr, next);
     Replace(head_, height_, lnode);
     return 1;
@@ -226,8 +226,8 @@ struct SubSBS {
       // Error: data not fit.
       assert(ok);
       std::cout << "Build Error: confirm failed." << std::endl;
-      std::cout << "Level0={"; for (auto& f : level_[0]) std::cout << f->ToString() << ","; std::cout << "}" << std::endl;
-      std::cout << "Level1={"; for (auto& f : level_[1]) std::cout << f->ToString() << ","; std::cout << "}" << std::endl;
+      std::cout << "Level0={"; for (auto& f : files_[0]) std::cout << f->ToString() << ","; std::cout << "}" << std::endl;
+      std::cout << "Level1={"; for (auto& f : files_[1]) std::cout << f->ToString() << ","; std::cout << "}" << std::endl;
       std::cout << edit.ToString() << std::endl;
       return 0;
     }

@@ -140,7 +140,7 @@ struct BFileVec : public BFileVecBase,
   }
   size_t GetValueWidth(BFile* value) {
     Slice a(value->Min()), b(value->Max());
-    size_t width = 1;
+    size_t width = 0;
     for (auto & child : *this)
       if (value->Include(*child) == BInclude)
         width ++;
