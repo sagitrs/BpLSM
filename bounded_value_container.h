@@ -2,6 +2,7 @@
 
 #include "bounded.h"
 #include <memory>
+#include <atomic>
 #include <set>
 #include "statistics.h"
 #include "bfile.h"
@@ -13,11 +14,13 @@ struct BFileVec : public BFileVecBase,
                   public RealBounded,
                   public Printable {
   //bool stats_dirty_;
-  Statistics* stats_;
+  std::atomic<Statistics*> stats_;
   void SetStatsDirty() { 
-    if (stats_) {
-      delete stats_; 
-      stats_ = nullptr;
+    auto s = stats_.load(std::memory_order_relaxed);
+    if (s) {
+      auto old = s;
+      stats_.store(nullptr, std::memory_order_relaxed);
+      delete old; 
     } 
   }
   BFile* GetOne() const {
@@ -34,14 +37,16 @@ struct BFileVec : public BFileVecBase,
   }
   Statistics* GetStatistics() {
     if (size() == 1) return GetOne();
-    if (!stats_) SetStatsDirty();
+    SetStatsDirty();
+    Statistics* s = nullptr;
     for (auto i = begin(); i != end(); ++i) {
-      if (stats_) 
-        stats_->MergeStatistics(**i);
-      else
-        stats_ = new Statistics(**i);
+      if (i == begin()) 
+        s = new Statistics(**i);
+      else 
+        s->MergeStatistics(**i);
     }
-    return stats_;
+    stats_.store(s, std::memory_order_relaxed);
+    return s;
   }
   //-----------------------------------------------------------------
   BFileVec() :   // Copy function.
@@ -49,15 +54,12 @@ struct BFileVec : public BFileVecBase,
     RealBounded("Undefined", "Undefined"),
     stats_(nullptr) {}
 
-  BFileVec(const BFileVecBase& container) :   // Copy function.
+  BFileVec(const BFileVec& container) :   // Copy function.
     BFileVecBase(container),
     RealBounded("Undefined", "Undefined"),
     stats_(nullptr) { Rebound(); }
 
-  ~BFileVec() { 
-    if (stats_) 
-      delete stats_;
-  }
+  virtual ~BFileVec() { SetStatsDirty(); }
 
   static int StaticCompare(const BFile &a, const BFile &b) {
     int cmp = a.Min().compare(b.Min());

@@ -175,13 +175,15 @@ struct Statistics : virtual public Printable {
   virtual void UpdateStatistics(Statistable::TypeLabel label, 
                                 Statistable::TypeData diff, 
                                 Statistable::TypeTime time) {
-    UpdateTime(time);
-    queue_[time][label] += diff;
+    if (time != STATISTICS_ALL) {
+      UpdateTime(time);
+      queue_[time][label] += diff;
+    }
     history_[label] += diff;
   }
   virtual Statistable::TypeData GetStatistics(
                                   Statistable::TypeLabel label, 
-                                  Statistable::TypeTime time = STATISTICS_ALL) {
+                                  Statistable::TypeTime time = STATISTICS_ALL) const {
     switch (time) {
     case STATISTICS_ALL:
       return history_[label];

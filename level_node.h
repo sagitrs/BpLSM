@@ -44,10 +44,7 @@ struct LevelNode : public Printable {
       hottest_(nullptr),
       max_runs_(0) {}
 
-    ~VariableTable() {
-      SetDirty();
-      //if (stats_) delete stats_;
-    }
+    virtual ~VariableTable() { SetDirty(); }
     //bool isDirty() const { return stats_dirty_; }
     void SetDirty(bool state = true) { 
       if (stats_) {
@@ -79,7 +76,7 @@ struct LevelNode : public Printable {
     table_(stat_options) {}
   // Copy existing node.
   LevelNode(const LevelNode& node):
-    next_(node.next_.load(std::memory_order_acquire)),
+    next_(node.next_.load(std::memory_order_relaxed)),
     buffer_(node.buffer_),
     table_(node.table_) {}
   ~LevelNode() {
@@ -105,7 +102,7 @@ struct LevelNode : public Printable {
   bool isDirty() const { return !buffer_.empty(); }
   //bool isStatisticsDirty() const { return table_.isDirty(); }
   void Absorb(LevelNode* target) { 
-    next_.store(target->next_, std::memory_order_release);
+    next_.store(target->next_, std::memory_order_relaxed);
     //next_ = target->next_;
     buffer_.AddAll(target->buffer_);
     table_.SetDirty();

@@ -65,28 +65,28 @@ struct SBSNode : public Printable {
   bool IsHead() const { return is_head_; }
   BFile* Pacesetter() const { 
     return is_head_ ? nullptr : 
-      pacesetter_.load(std::memory_order_acquire); 
+      pacesetter_.load(std::memory_order_relaxed); 
   }
   void SetPacesetter(BFile* file) {
-    pacesetter_.store(file, std::memory_order_release);
+    pacesetter_.store(file, std::memory_order_relaxed);
   }
   void SetLevel(size_t k, LevelNode* node) {
-    level_[k].store(node, std::memory_order_release);
+    level_[k].store(node, std::memory_order_relaxed);
   }
   LevelNode* GetLevel(size_t height) const { 
-    return level_[height].load(std::memory_order_acquire); 
+    return level_[height].load(std::memory_order_relaxed); 
   }
   Slice Guard() const { 
     if (is_head_) return "";
     return Pacesetter()->Min(); 
   }
-  size_t Height() const { return height_.load(std::memory_order_acquire); } 
-  void SetHeight(size_t h) { height_.store(h, std::memory_order_release); }
+  size_t Height() const { return height_.load(std::memory_order_relaxed); } 
+  void SetHeight(size_t h) { height_.store(h, std::memory_order_relaxed); }
   SBSP Next(size_t k, size_t recursive = 1) const { 
-    SBSP next = GetLevel(k)->next_.load(std::memory_order_acquire);
+    SBSP next = GetLevel(k)->next_.load(std::memory_order_relaxed);
     for (size_t i = 1; i < recursive; ++i) {
       assert(next != nullptr && next->Height() >= k);
-      next = next->GetLevel(k)->next_.load(std::memory_order_acquire); 
+      next = next->GetLevel(k)->next_.load(std::memory_order_relaxed); 
     }
     return next;
   }
@@ -126,7 +126,7 @@ struct SBSNode : public Printable {
     return 0;
   }
   void SetNext(size_t k, SBSP next) { 
-    GetLevel(k)->next_.store(next,std::memory_order_release); 
+    GetLevel(k)->next_.store(next,std::memory_order_relaxed); 
   }
  private:
   bool Overlap(size_t height, const Bounded& range) const {
@@ -238,11 +238,18 @@ struct SBSNode : public Printable {
     return h;
   }
   const Statistics* GetTreeStatistics(size_t height) {
-    if (height == 0) 
-      return GetLevel(0)->buffer_.GetStatistics();
-    
+    if (height == 0) {
+      auto& buffer = GetLevel(0)->buffer_;
+      auto res = buffer.GetStatistics();
+      if (res) { 
+        int64_t leaf = res->GetStatistics(LeafCount, -1);
+        if (leaf != 1)
+          res->UpdateStatistics(LeafCount, (int)1 - leaf, STATISTICS_ALL);
+      }
+      return res;
+    }
     Statistics* s = GetLevel(height)->table_.stats_;
-    if (!s) return s;
+    if (s != nullptr) return s;
     
     std::vector<const Statistics*> ss;
     ss.push_back(GetTreeStatistics(height - 1));
@@ -256,7 +263,6 @@ struct SBSNode : public Printable {
       else 
         s->MergeStatistics(*stat);
     }
-    
     GetLevel(height)->table_.SetDirty(false);
     return s;
   }
