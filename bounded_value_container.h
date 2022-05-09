@@ -140,11 +140,11 @@ struct BFileVec : public BFileVecBase,
         std::to_string(operator[](i)->Identifier())
       );
   }
-  size_t GetValueWidth(BFile* value) {
-    Slice a(value->Min()), b(value->Max());
+  size_t GetValueWidth(const Bounded& range) {
+    Slice a(range.Min()), b(range.Max());
     size_t width = 1;
     for (auto & child : *this)
-      if (value->Include(*child) == BInclude)
+      if (range.Include(*child) == BInclude)
         width ++;
     return width;
   }

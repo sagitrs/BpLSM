@@ -93,6 +93,7 @@ struct Scorer {
   void GetChildren(sagitrs::BFileVec* children) {
     node_->GetChildGuard(height_, children);
   }
+  const Bounded& Range() const { return node_->GetLevel(height_)->buffer_; }
 };
 
 }

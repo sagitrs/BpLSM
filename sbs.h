@@ -215,7 +215,7 @@ struct SBSkiplist {
         auto& buffer = node->GetLevel(h)->buffer_;
         for (auto value : buffer) {
           NodeStatus::ValueStatus vs;
-          vs.width_ = children.GetValueWidth(value);
+          vs.width_ = children.GetValueWidth(*value);
           vs.size_ = value->Size();
           vs.id_ = value->Identifier();
           status.vs_.push_back(vs);
