@@ -24,107 +24,112 @@ struct SubSBS {
  private:
   SBSNode *head_, *prev_;
   size_t height_;
-  std::vector<SBSNode*> children_;
 
-  std::vector<BFile*> files_[2];
-  
-  std::vector<LevelNode*> lnodes_;
-  std::vector<SBSNode*> nodes_;
+  std::vector<SBSNode*> next_level_;
+  int overlap_begin_, overlap_end_;
+  std::vector<LevelNode*> dlnodes_;
+  std::vector<BFile*> dfiles_;
+  // recursive mode : remove node in next_level_[overlap_begin, overlap_end_].
+  // normal mode: remove lnode in next_level[...].
+
   bool recursive_compaction_;
+  size_t memory_usage_;
 
  public:
   SubSBS(SBSNode* head, size_t height, SBSNode* prev)
   : head_(head), prev_(prev), height_(height), 
-    children_(), 
-    lnodes_(), nodes_(), 
-    files_(), recursive_compaction_(height == 1) 
+    next_level_(), overlap_begin_(0), overlap_end_(0),
+    recursive_compaction_(height == 1),
+    memory_usage_(0)
   {
     auto next = head->Next(height);
-    for (SBSNode* node = head_->Next(height-1); node != next; node = node->Next(height-1))
-      children_.push_back(node);
-    CollectFiles(files_[0], files_[1]);
+    for (SBSNode* node = head_; node != next; node = node->Next(height-1))
+      next_level_.push_back(node);
   }
   ~SubSBS() { 
-    // files in lnode shall not be deleted, since handle is inherited by new node.
-    for (auto& lnode : lnodes_) {
-      std::vector<BFile*> handler;
-      for (auto& file : lnode->buffer_)
-        handler.push_back(file);
-      for (auto& file : handler) {
-        auto popped = lnode->Del(*file);
-        assert(popped == file);
+    if (recursive_compaction_) {
+      for (int i = overlap_begin_ + 1; i < overlap_end_; ++i) if (i > 0) {
+        SBSNode* node = next_level_[i];
+        assert(node->Height() == 1);
+        delete node;
       }
-      delete lnode;
     }
-    // files in node shall be deleted.
-    for (auto& node : nodes_)
-      delete node;
+
+    for (auto& lnode : dlnodes_)
+      delete lnode;
+    for (auto& file : dfiles_)
+      delete file;
   }
+
+  size_t MemoryUsage() const { return memory_usage_; }
   
   SBSNode* Head() const { return head_; }
   size_t Height() const { return height_; }
   const SBSOptions& Options() const { return head_->options_; }
-  void CollectFiles(std::vector<BFile*>& level0, std::vector<BFile*>& level1) const {
-    for (BFile* file : head_->GetLevel(height_)->buffer_)
-      level1.push_back(file);
-    if (recursive_compaction_) {
-      auto file = head_->GetLevel(height_ - 1)->buffer_.GetOne();
-      if (file) level0.push_back(file);
-      for (SBSNode* node : children_) {
-        auto file = node->GetLevel(height_ - 1)->buffer_.GetOne();
-        if (file) level0.push_back(file);
-      }
-    }
+  
+  inline BFile* GetOne(SBSNode* node) {
+    const BFileVec& buffer = head_->GetLevel(height_)->buffer_;
+    BFile* file = buffer.GetOne();
+    return file;
   }
-  bool PickOldFiles(const std::vector<FileMetaData*>& files, std::vector<BFile*>& oldchild) const {
-    if (files.size() != files_[0].size() + files_[1].size())
-      assert(files_[0].size() > 0);
+  bool FindOverlap(const std::vector<FileMetaData*>& deleted) {
+    std::set<uint64_t> dnums;
+    for (auto file : deleted) 
+      dnums.insert(file->number);
     
-    std::set<uint64_t> nums;
-    for (auto file : files) nums.insert(file->number);
-    for (size_t l = 0; l < 2; ++l)
-      for (auto file : files_[l]) 
-        if (nums.find(file->Data()->number) == nums.end()) {
-          assert(l == 0);
-          if (l == 1) return 0;
-          // this file locates in child level, but not chosen for compaction.
-          for (auto f : files) {
-            RealBounded fbound(f->smallest.user_key(), f->largest.user_key());
-            if (file->Compare(fbound) == BOverlap)
-              return 0;
-          }
-          // so it shall has no overlap with any other files.
-          oldchild.push_back(file);
-        }
-    if (recursive_compaction_) {
-      nums.clear();
-      for (auto file : oldchild) nums.insert(file->Identifier());
-      for (auto child : children_) {
-        BFile* one = child->GetLevel(0)->buffer_.GetOne();
-        if (nums.find(one->Identifier()) != nums.end()) {
-          // this node contains an old file. don't dispose this file.
-          auto res = child->Del(0, *one);
-          assert(res == one);
+    const BFileVec& buffer = head_->GetLevel(height_)->buffer_;
+    RealBounded range(buffer);
+    for (BFile* file : buffer) {
+      assert(dnums.find(file->Identifier()) != dnums.end());
+      dfiles_.push_back(file);
+    }
+
+    overlap_begin_ = -1;
+    overlap_end_ = next_level_.size();
+    for (int i = 0; i < next_level_.size(); ++i) {
+      const BFileVec& buffer = next_level_[i]->GetLevel(height_ - 1)->buffer_;
+      if (buffer.empty()) continue;
+      auto res = buffer.Compare(range);
+      if (res == BGreater && overlap_end_ > i) 
+        overlap_end_ = i;
+      if (res == BLess && overlap_begin_ < i)
+        overlap_begin_ = i;
+      if (res == BOverlap) {
+        assert(overlap_begin_ < i && i < overlap_end_);
+        if (recursive_compaction_) {
+          auto file = buffer.GetOne();
+          dfiles_.push_back(file);  
         }
       }
     }
+
+    for (auto file : dfiles_) 
+      assert(dnums.find(file->Identifier()) != dnums.end());
+    assert(dfiles_.size() == dnums.size());
     return 1;
   }
-  void Transform(const std::vector<FileMetaData*>& generated, 
-                 const std::vector<BFile*>& oldchild,
-                 std::vector<BFile*>& newchild) {
+  void Transform(const std::vector<FileMetaData*>& generated_files, std::vector<BFile*>& newchild) {
     sagitrs::BFileVec buffer;
     std::vector<FileGenData> gendata;
 
+    std::vector<FileMetaData*> generated(generated_files);
+    std::sort(generated.begin(), generated.end(), [](FileMetaData* a, FileMetaData* b){
+      return a->smallest.user_key().compare(b->smallest.user_key()) < 0;});
+
+    size_t curr = overlap_begin_ + 1;
     for (auto& meta : generated) {
-      FileGenData gd; gd.f = meta;
-      Slice min(meta->smallest.user_key());
-      Slice max(meta->largest.user_key());
-      for (auto& d : files_[0]) {
-        Slice key(d->Data()->smallest.user_key());
-        if (min.compare(key) <= 0 && key.compare(max) < 0) {
-          gd.inherit.push_back(d);
-          //s->MergeStatistics(std::dynamic_pointer_cast<sagitrs::Statistable>(d)); 
+      FileGenData gd; 
+      gd.f = meta;
+      if (recursive_compaction_) {
+        RealBounded meta_range(meta->smallest.user_key(), meta->largest.user_key());
+        for (; curr < overlap_end_; ++curr) {
+          auto file = next_level_[curr]->GetLevel(height_ - 1)->buffer_.GetOne();
+          if (file == nullptr) continue;
+          auto res = meta_range.Compare(*file);
+          if (res == BGreater) continue;
+          if (res == BLess) break;
+          assert(res == BOverlap);
+          gd.inherit.push_back(file);
         }
       }
       gendata.push_back(gd);
@@ -134,20 +139,14 @@ struct SubSBS {
       for (auto& file : gen.inherit) 
         s.MergeStatistics(*file);
       gen.file = new BFile(gen.f, s);
+      memory_usage_ += sizeof(gen.file);
     }
     for (auto& gen : gendata)
       newchild.push_back(gen.file);
-    for (auto& old : oldchild)
-      newchild.push_back(old);
     // comparison function object (i.e. an object that satisfies the requirements of Compare) 
     // which returns ​true if the first argument is less than (i.e. is ordered before) the second.
     std::sort(newchild.begin(), newchild.end(), [](BFile* a, BFile* b){
       return a->Data()->smallest.user_key().compare(b->Data()->smallest.user_key()) < 0;});
-    //for (auto& gen : generate_files) if (gen.inherit.size() > 0)
-    //  list_.Put(gen.file);
-    //for (auto& gen : generate_files) if (gen.inherit.size() == 0)
-    //  list_.Put(gen.file);
-    //list_.Reinsert();
   }
   void CleanUp(SBSNode* node, size_t height) {
     auto old = node->GetLevel(height);
@@ -164,9 +163,10 @@ struct SubSBS {
     return node;
   }
   void Replace(SBSNode* node, size_t height, LevelNode* lnode) {
-    lnodes_.push_back(node->GetLevel(height));
+    auto old = node->GetLevel(height);
+    dlnodes_.push_back(old);
     node->SetLevel(height, lnode);
-    if (lnode) node->Rebound();
+    if (lnode) node->Rebound(true);
   }
   bool BuildWith(const std::vector<BFile*>& files) {
     if (recursive_compaction_) {
@@ -178,19 +178,23 @@ struct SubSBS {
       } 
       assert(height_ == 1);
 
-      // will be deleted when destructed.
-      //for (auto& child : children_)
-      //  nodes_.push_back(child);
-
-      SBSNode* next = head_->Next(height_);
+      SBSNode* next = overlap_end_ >= next_level_.size() ? 
+                        head_->Next(height_) : 
+                        next_level_[overlap_end_];
       for (int i = files.size() - 1; i > 0; --i) {
         SBSNode* node = new SBSNode(Options(), next);
         node->Add(Options(), 0, files[i]);
         //node->SetNext(0, next);
         next = node;
       }
-      auto lnode = BuildLNode(nullptr, files[0], next);
-      Replace(head_, 0, lnode);
+      if (overlap_begin_ == -1) {
+        auto lnode = BuildLNode(nullptr, files[0], next);
+        Replace(head_, 0, lnode);
+      } else {
+        SBSNode* node = new SBSNode(Options(), next);
+        node->Add(Options(), 0, files[0]);
+        next_level_[overlap_begin_]->SetNext(height_ - 1, node);
+      }
     } else {
       // push {gendata} to {head_, children_}
       SBSNode *curr = head_, *next = head_->Next(height_);
@@ -228,34 +232,48 @@ struct SubSBS {
     return 1;
   }
   bool Build(const BFileEdit& edit) {
-    std::vector<BFile*> oldchild, newchild;
-    bool ok = PickOldFiles(edit.deleted_, oldchild);
-    if (!ok) {
-      // Error: data not fit.
-      assert(ok);
-      std::cout << "Build Error: confirm failed." << std::endl;
-      std::cout << "Level0={"; for (auto& f : files_[0]) std::cout << f->ToString() << ","; std::cout << "}" << std::endl;
-      std::cout << "Level1={"; for (auto& f : files_[1]) std::cout << f->ToString() << ","; std::cout << "}" << std::endl;
-      std::cout << edit.ToString() << std::endl;
-      return 0;
-    }
-    Transform(edit.generated_, oldchild, newchild);
+    std::vector<BFile*> newchild;
+    bool ok = FindOverlap(edit.deleted_);
+    assert(ok);
+    Transform(edit.generated_, newchild);
     ok = BuildWith(newchild);
+    assert(ok);
     return ok;
   }
 
   bool CheckExist(SBSNode* list) {
     auto iter = new SBSIterator(list);
+    std::set<uint64_t> dnums;
+    for (auto file : dfiles_) 
+      dnums.insert(file->Identifier());
+    
     for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
       SBSNode* n = iter->Current().node_;
-      if (n == head_) 
-        return 1;
-      if (recursive_compaction_)
-        for (auto& c : children_)
-          if (n == c) 
+      for (int h = 0; h < n->Height(); ++h) {
+        LevelNode* l = n->GetLevel(h);
+        for (auto file : l->buffer_)
+          if (dnums.find(file->Identifier()) != dnums.end())
             return 1;
+      }
+    }
+    if (recursive_compaction_) {
+      for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
+        SBSNode* n = iter->Current().node_;
+        for (int i = overlap_begin_ + 1; i < overlap_end_; ++i)
+          if (i > 0 && n == next_level_[i]) 
+            return 1;
+      }
     }
     return 0;
+  }
+
+  std::string ToString() {
+    std::stringstream ss;
+    ss << "SubSBS{";
+    for (auto file : dfiles_)
+      ss << file->Identifier() << ",";
+    ss << "}" << std::endl;
+    return ss.str();
   }
 };
 

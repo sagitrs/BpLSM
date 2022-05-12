@@ -79,12 +79,12 @@ struct LevelNode : public Printable {
     next_(node.next_.load(std::memory_order_relaxed)),
     buffer_(node.buffer_),
     table_(node.table_) {}
-  ~LevelNode() {
-    if (!buffer_.empty())
-      for (BFile* file : buffer_)
-        delete file;
-  }
+  ~LevelNode() {}
 
+  void ReleaseAll() {
+    for (auto file : buffer_)
+      delete file;
+  }
   void Add(BFile* value) {
     buffer_.Add(value); 
     table_.SetDirty();

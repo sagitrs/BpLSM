@@ -29,8 +29,10 @@ struct SBSkiplist {
     std::vector<SBSNode*> list;
     for (SBSNode* node = head_; node != nullptr; node = node->Next(0))
       list.push_back(node);
-    for (auto& node : list)
+    for (auto& node : list) {
+      node->ReleaseAll();
       delete node;
+    }
   }
   void ReplaceHead(SBSNode* new_head) { head_ = new_head; }
   void Put(BFile* value) {

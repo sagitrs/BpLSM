@@ -62,6 +62,11 @@ struct SBSNode : public Printable {
       DecHeight();
   }
 
+  void ReleaseAll() {
+    for (size_t i = 0; i < height_; ++i)
+      GetLevel(i)->ReleaseAll();
+  }
+
   bool IsHead() const { return is_head_; }
   BFile* Pacesetter() const { 
     return is_head_ ? nullptr : 
@@ -113,7 +118,7 @@ struct SBSNode : public Printable {
     if (Pacesetter()) container->push_back(Pacesetter());
     for (SBSP next = Next(height - 1); next != ed; next = next->Next(height - 1)) 
       if (next->Pacesetter())
-        container->push_back(next->Pacesetter());
+        container->Add(next->Pacesetter());
   }
   bool HasEmptyChild(size_t height) const {
     if (height == 0) return 0;
@@ -134,19 +139,19 @@ struct SBSNode : public Printable {
       if (r->Compare(range) == BOverlap) return true;
     return false;
   }
-  void Rebound() {
+  void Rebound(bool force = false) {
     if (is_head_) {
       return;
     }
     BFile* pace = Pacesetter();
-    BFile* res = pace;
+    BFile* res = force ? nullptr : pace;
     size_t h = Height();
     for (size_t i = 0; i < h; ++i)
       for (auto range : GetLevel(i)->buffer_)
         if (res == nullptr || range->Min().compare(res->Min()) < 0) { 
           res = range; 
         }
-    if (pace != res)
+    if (force || pace != res)
       SetPacesetter(res);
   }
   bool Empty() const {
@@ -211,6 +216,7 @@ struct SBSNode : public Printable {
     auto last = GetLevel(h - 1);
     SetHeight(h - 1);
     SetLevel(h - 1, nullptr);
+    //if (last) last->ReleaseAll();
     delete last;
   }
   void IncHeight(LevelNode* lnode) {

@@ -546,13 +546,16 @@ struct SBSIterator : public Printable {
       bool could_absorb = next != nullptr && next->Height() == height + 1;
       if (!need_absorb || !could_absorb) return;
       {
-        auto oldlnode = target.node_->GetLevel(height);
-        auto newlnode = new LevelNode(*next->GetLevel(height));
-        newlnode->buffer_.AddAll(oldlnode->buffer_);
+        auto old0 = target.node_->GetLevel(height);
+        auto old1 = next->GetLevel(height);
+        auto newlnode = new LevelNode(*old1);
+        newlnode->buffer_.AddAll(old0->buffer_);
 
         target.node_->SetLevel(height, newlnode);
+        next->SetLevel(height, nullptr);
         next->DecHeight();
-        delete oldlnode;
+        delete old0;
+        delete old1;
         target.node_->Rebound();
         next->Rebound();
       }
