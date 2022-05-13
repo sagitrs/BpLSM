@@ -103,8 +103,8 @@ struct SubSBS {
       }
     }
 
-    for (auto file : dfiles_) 
-      assert(dnums.find(file->Identifier()) != dnums.end());
+    //for (auto file : dfiles_) 
+    //  assert(dnums.find(file->Identifier()) != dnums.end());
     assert(dfiles_.size() == dnums.size());
     return 1;
   }
