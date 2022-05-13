@@ -3,6 +3,8 @@
 #include <vector>
 #include <stack>
 #include <iostream>
+#include <cmath>
+#include <algorithm>
 #include "leveldb/env.h"
 
 namespace sagitrs {
@@ -55,7 +57,7 @@ struct SBSNodeOptions {
   size_t DefaultWidth() const { return width_[1]; }
 
   double needs_compaction_score_ = 1;
-  size_t max_compaction_files_ = 99;
+  size_t max_compaction_files_ = 72;
   bool force_compaction_ = 0;
   virtual double NeedsCompactionScore() const { 
     return force_compaction_ ? 0 : needs_compaction_score_; 
@@ -130,6 +132,13 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   size_t Width() const { return SBSNodeOptions::BaseWidth; }
 
   size_t kMaxHeight() const { return 6; }
+
+  double SpaceAmplificationConst() const { return 0.3; }
+  double CacheCapacity() const { return 0.3; }
+  double ApproximateBufferNodeConst() const { return 1.0 / (DefaultWidth() - 1); }
+  double FilesPerNode() const { return SpaceAmplificationConst() / ApproximateBufferNodeConst(); }
+  double LevelCapabilityConst(size_t level) const { return std::pow(1.0 / DefaultWidth(), level); }
+ 
  public:
   SBSOptions() = default;
   SBSOptions(const SBSOptions& options) = default;
