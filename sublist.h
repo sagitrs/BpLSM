@@ -220,10 +220,10 @@ struct SubSBS {
       }
     }
     SBSNode* next = head_->Next(height_);
-    size_t w1 = prev_->GeneralWidth(height_);
+    size_t w1 = prev_ ? prev_->GeneralWidth(height_) : 0;
     size_t w2 = head_->GeneralWidth(height_);
-    if (head_->Height() == height_ + 1 && 
-        (w1 < Options().MinWidth() || w2 < Options().MinWidth())) {
+    if (prev_ && head_->Height() == height_ + 1 && 
+        (w2 < Options().MinWidth() || w1 < Options().MinWidth())) {
       // this lnode is better to be deleted.
       prev_->SetNext(height_, next);
       Replace(head_, height_, nullptr);
