@@ -55,7 +55,7 @@ struct SBSNodeOptions {
   size_t DefaultWidth() const { return width_[1]; }
 
   double needs_compaction_score_ = 1;
-  size_t max_compaction_files_ = 24;
+  size_t max_compaction_files_ = 99;
   bool force_compaction_ = 0;
   virtual double NeedsCompactionScore() const { 
     return force_compaction_ ? 0 : needs_compaction_score_; 
