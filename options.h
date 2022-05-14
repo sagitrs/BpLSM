@@ -134,7 +134,7 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   size_t kMaxHeight() const { return 6; }
 
   double SpaceAmplificationConst() const { return 0.3; }
-  double CacheCapacity() const { return 0.3; }
+  double CacheCapacity() const { return 0.1; }
   double ApproximateBufferNodeConst() const { return 1.0 / (DefaultWidth() - 1); }
   //double FilesPerNode() const { return SpaceAmplificationConst() / ApproximateBufferNodeConst(); }
   double LevelCapabilityConst(size_t level) const { return std::pow(1.0 / DefaultWidth(), level); }
