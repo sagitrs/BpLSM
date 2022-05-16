@@ -213,9 +213,11 @@ struct SubSBS {
             bound = Slice();
         }
         assert(f->Data()->smallest.user_key().compare(curr->Guard()) >= 0);
-        
-        auto lnode = BuildLNode(curr->level_[height_-1], f, nullptr);
-        Replace(curr, height_ - 1, lnode);
+        {
+          // insert f to curr[height_-1].
+          auto lnode = BuildLNode(curr->level_[height_-1], f, nullptr);
+          Replace(curr, height_ - 1, lnode);
+        }
         //curr->Add(Options(), height_ - 1, f);
       }
     }

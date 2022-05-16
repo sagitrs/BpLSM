@@ -305,9 +305,11 @@ struct SBSkiplist {
     }
     for (int h = maxh - 1; h >= 0; --h) {
       for (size_t i = 0; i < map.size(); ++i) {
-        if (map[i].size() > h)
-          os << (map[i][h] > 9 ? '@' : static_cast<const char>('0' + map[i][h]));
-        else 
+        if (map[i].size() > h) {
+          size_t x = map[i][h];
+          char ch = (x < 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
+          os << ch;
+        } else 
           os << ' ';
       }
       os << std::endl;
