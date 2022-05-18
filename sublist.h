@@ -168,6 +168,35 @@ struct SubSBS {
     node->SetLevel(height, lnode);
     if (lnode) node->Rebound(true);
   }
+  void NodePut(BFile* file, SBSNode* node, size_t height) {
+    // insert file into node[height].
+    auto lnode = BuildLNode(node->GetLevel(height), file, nullptr);
+    Replace(node, height, lnode);
+  }
+  bool TreePut(BFile* file, SBSNode* node, size_t height) {
+    SBSNode *tail = head_->Next(height);
+    SBSNode* next = nullptr;
+    if (height > 1) {
+      for (SBSNode* n = node; n != tail; n = next) {
+        next = n->Next(height - 1);
+        Slice rbound;
+        if (next) rbound = next->Guard();
+        assert(n->Guard().compare(file->Min()) <= 0);
+        int cmp2 = next ? file->Max().compare(rbound) : -1;
+        if (cmp2 < 0) { 
+          TreePut(file, n, height-1);
+          return 1;
+        }
+        int cmp1 = next ? file->Min().compare(rbound) : -1;
+        if (cmp1 < 0)
+          break;  // this file covers next node.
+        // otherwise, check next.
+      }
+    }
+    // file can not be inserted to child node.
+    NodePut(file, node, height);
+    return 0;
+  }
   bool BuildWith(const std::vector<BFile*>& files) {
     if (recursive_compaction_) {
       // build nodes from gendata.
@@ -196,29 +225,12 @@ struct SubSBS {
         next_level_[overlap_begin_]->SetNext(height_ - 1, node);
       }
     } else {
-      // push {gendata} to {head_, children_}
-      SBSNode *curr = head_, *next = head_->Next(height_);
-      for (size_t i = 0; i < files.size(); ++i) {
-        Slice bound;
-        if (curr->Next(height_ - 1) != next)
-          bound = curr->Next(height_ - 1)->Guard();
-        auto& f = files[i];
-
-        while (bound.size() != 0 && f->Data()->largest.user_key().compare(bound) >= 0) {
-          curr = curr->Next(height_ - 1);
-          assert(curr != next);
-          if (curr->Next(height_ - 1) != next)
-            bound = curr->Next(height_ - 1)->Pacesetter()->Min();
-          else 
-            bound = Slice();
+      for (auto file : files) {
+        bool direct = TreePut(file, head_, height_);
+        if (!direct) {
+          bool d = TreePut(file, head_, height_);
+          assert(!d);
         }
-        assert(f->Data()->smallest.user_key().compare(curr->Guard()) >= 0);
-        {
-          // insert f to curr[height_-1].
-          auto lnode = BuildLNode(curr->level_[height_-1], f, nullptr);
-          Replace(curr, height_ - 1, lnode);
-        }
-        //curr->Add(Options(), height_ - 1, f);
       }
     }
     SBSNode* next = head_->Next(height_);
@@ -283,3 +295,26 @@ struct SubSBS {
 };
 
 }
+
+/*
+// push {gendata} to {head_, children_}
+      SBSNode *curr = head_, *next = head_->Next(height_);
+      for (size_t i = 0; i < files.size(); ++i) {
+        Slice bound;
+        if (curr->Next(height_ - 1) != next)
+          bound = curr->Next(height_ - 1)->Guard();
+        auto& f = files[i];
+
+        while (bound.size() != 0 && f->Data()->largest.user_key().compare(bound) >= 0) {
+          curr = curr->Next(height_ - 1);
+          assert(curr != next);
+          if (curr->Next(height_ - 1) != next)
+            bound = curr->Next(height_ - 1)->Pacesetter()->Min();
+          else 
+            bound = Slice();
+        }
+        assert(f->Data()->smallest.user_key().compare(curr->Guard()) >= 0);
+        NodePut(f, curr, height_-1);
+        //curr->Add(Options(), height_ - 1, f);
+      }
+*/
