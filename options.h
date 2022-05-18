@@ -45,7 +45,7 @@ struct SBSNodeOptions {
 // Width limit of nodes:
  private:
  public:
-  static const size_t BaseWidth = 11;
+  static const size_t BaseWidth = 9;
   size_t width_[3] = {BaseWidth * 2 / 3, BaseWidth, BaseWidth * 4 / 3};
   // The width of each layer of the node, except for the Head node, 
   // must not be LOWER than this value.
@@ -127,8 +127,8 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 
  public:
   //size_t max_file_size_ = 2 * 1024 * 1024;
-  size_t MaxWriteBufferSize() const { return 32 * 1024 * 1024; }
-  size_t MaxFileSize() const { return 4 * 1024 * 1024; }
+  size_t MaxWriteBufferSize() const { return 32 << 20; }
+  size_t MaxFileSize() const { return 4 << 20; }
   size_t Width() const { return SBSNodeOptions::BaseWidth; }
 
   size_t kMaxHeight() const { return 6; }
@@ -139,6 +139,9 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   //double FilesPerNode() const { return SpaceAmplificationConst() / ApproximateBufferNodeConst(); }
   double LevelCapabilityConst(size_t level) const { return std::pow(1.0 / DefaultWidth(), level); }
  
+  inline size_t ReadSampleConst() const { return 100; }
+  inline size_t WriteSampleConst() const { return 200; }
+  
  public:
   SBSOptions() = default;
   SBSOptions(const SBSOptions& options) = default;

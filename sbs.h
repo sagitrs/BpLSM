@@ -10,6 +10,7 @@
 #include "sublist.h"
 
 #include "scorer_impl.h"
+#include "sampler.h"
 namespace sagitrs {
 struct Scorer;
 struct SBSkiplist {
@@ -124,7 +125,8 @@ struct SBSkiplist {
     delete iter;
     return res;
   }
-  void PickFilesByIterator(SBSIterator* iter, BFileVec* containers) {
+  void PickFilesByIterator(SBSIterator* iter, BFileVec* containers, 
+                           SamplerTable* global, size_t spf) {
     if (containers == nullptr) return;
     
     BFileVec& base_buffer = containers[0];
@@ -136,40 +138,87 @@ struct SBSkiplist {
     // if last level, pick files into this compaction, otherwise push to guards.
     int height = iter->Current().height_;
     
+    bool global_compaction = 
+      iter->Current().node_ == head_ && iter->Current().Next() == nullptr;
+
     auto st = iter->Current(); st.JumpDown();
     auto ed = iter->Current(); ed.JumpNext(); ed.JumpDown();
+    
+    if (height == 1) {
+      // pick last level file into compactor.
+      for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
+        auto& l0buffer = c.node_->GetLevel(0)->buffer_;
+        if (l0buffer.size() == 0) continue;
+        auto l0file = l0buffer.at(0);
+        //auto pacesster
+        if (base_buffer.Compare(*l0file) != BOverlap) continue;
+        child_buffer.push_back(l0file);
+        l0guards.push_back(l0file);
+      }
+    } else {
+      for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
+        auto& l0buffer = c.node_->GetLevel(0)->buffer_;
+        if (l0buffer.size() == 0) continue;
+        auto l0file = l0buffer.at(0);
+        //auto pacesster
+        if (base_buffer.Compare(*l0file) != BOverlap) continue;
+        guards.push_back(l0file);
+      }
+      if (global_compaction) {
+      // pick guards. 
+        if (false) {
+          global->StopSampling();
+          size_t f_buffer = base_buffer.size();
+          size_t f_sample = global->size() / spf;
+          double spf_local = spf * f_buffer / f_sample;
+          PickGuard(guards, iter->Current(), global, spf_local);
+        }
+        global->clear();
+      }
+    }
+  }
+  void PickGuard(BFileVec& guards, sagitrs::Coordinates parent, 
+                 SamplerTable* table, size_t spf) {
+    auto st = parent; st.JumpDown();
+    auto ed = parent; ed.JumpNext(); ed.JumpDown();
 
+    int prev = 0;
+    Coordinates prev_coord(st);
     for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
       auto& l0buffer = c.node_->GetLevel(0)->buffer_;
       if (l0buffer.size() == 0) continue;
       auto l0file = l0buffer.at(0);
       //auto pacesster
-      if (base_buffer.Compare(*l0file) != BOverlap) continue;
-      if (height == 1) {
-        child_buffer.push_back(l0file);
-        l0guards.push_back(l0file);
-      } else {
+      Slice min(l0file->Min());
+      int curr = table->GetCountSmallerOrEqualThan(min);
+      if (!(c == st)) { 
+        int size = curr - prev;
+        if (size * 2 >= spf * prev_coord.Width())
+          PickGuard(guards, prev_coord, table, spf);
         guards.push_back(l0file);
       }
+      prev = curr; 
+      prev_coord = c;  
     }
   }
   double PickFilesByScoreInHeight(int height, Scorer& scorer, double baseline,
-                          BFileVec* containers = nullptr) {
+                          BFileVec* containers) {
     auto iter = NewIterator();
     iter->SeekToRoot();
     double max_score = iter->SeekScoreInHeight(height, scorer, baseline, true);
     if (containers)
-      PickFilesByIterator(iter, containers);
+      PickFilesByIterator(iter, containers, nullptr, 0);
     delete iter;
     return max_score;
   }
   double PickFilesByScore(Scorer& scorer, double baseline,
-                          BFileVec* containers = nullptr) {
+                          BFileVec* containers, SamplerTable* table,
+                          size_t spf) {
     auto iter = NewIterator();
     iter->SeekToRoot();
     double max_score = iter->SeekScore(scorer, baseline, true);
     if (containers)
-      PickFilesByIterator(iter, containers);
+      PickFilesByIterator(iter, containers, table, spf);
     delete iter;
     return max_score;
   }
@@ -345,9 +394,9 @@ struct SBSkiplist {
     PrintSimple(ss);
   #else
     PrintList(ss);
-    PrintStatistics(ss);
-  #endif
     //PrintStatistics(ss);
+  #endif
+    PrintStatistics(ss);
     return ss.str();
   }
   size_t size() const {

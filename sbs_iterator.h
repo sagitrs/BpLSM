@@ -252,6 +252,25 @@ struct SBSIterator : public Printable {
       if (!dive) break;
     }
   }
+  void SeekKeySpace(const Slice& key, bool only_seek_next = false) {
+    if (only_seek_next) {
+      assert(Current().height_ == 0);
+      for (; Valid(); Next()) {
+        SBSNode* next = Current().Next();
+        BFile* a = Current().node_->GetLevel(0)->buffer_.GetOne();
+        assert(!a || a->Min().compare(key) <= 0);
+        BFile* b = next ? next->GetLevel(0)->buffer_.GetOne() : nullptr;
+        if (!b || key.compare(b->Min()) < 0) 
+          return;
+      }
+    } else {
+      RealBounded bound(key, key);
+      SeekRange(bound);
+      if (Current().height_ > 0)
+        Dive(Current().height_);
+      SeekKeySpace(key, true);
+    }
+  }
   bool SeekCurrentPrev(std::vector<SBSNode*>& prev) {
     CoordinatesStack s2(s_);
     size_t size = s2.Bottom().node_->Height();
