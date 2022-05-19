@@ -156,25 +156,30 @@ struct SBSkiplist {
         l0guards.push_back(l0file);
       }
     } else {
-      for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
-        auto& l0buffer = c.node_->GetLevel(0)->buffer_;
-        if (l0buffer.size() == 0) continue;
-        auto l0file = l0buffer.at(0);
-        //auto pacesster
-        if (base_buffer.Compare(*l0file) != BOverlap) continue;
-        guards.push_back(l0file);
-      }
+      double spf_local = 99999999;
+      SamplerTable* reference = nullptr;
       if (global_compaction) {
-      // pick guards. 
-        if (false) {
-          global->StopSampling();
-          size_t f_buffer = base_buffer.size();
-          size_t f_sample = global->size() / spf;
-          double spf_local = spf * f_buffer / f_sample;
-          PickGuard(guards, iter->Current(), global, spf_local);
-        }
+        global->StopSampling();
+        //size_t f_buffer = base_buffer.size();
+        //size_t f_sample = global->size() / spf;
+        //double spf_local = spf * f_buffer / f_sample;
+        PickGuard(guards, iter->Current(), reference, spf_local);
         global->clear();
+      } else {
+        PickGuard(guards, iter->Current(), nullptr, 99999999);
       }
+      Filter(guards, base_buffer);
+    }
+  }
+  void Filter(BFileVec& vec, const Bounded& range) {
+    BFileVec result;
+    for (BFile* file : vec) 
+      if (range.Compare(*file) == BOverlap)
+        result.push_back(file);
+    //std::sort()
+    if (result.size() != vec.size()) {
+      vec.clear();
+      vec.AddAll(result);
     }
   }
   void PickGuard(BFileVec& guards, sagitrs::Coordinates parent, 
@@ -188,16 +193,20 @@ struct SBSkiplist {
       auto& l0buffer = c.node_->GetLevel(0)->buffer_;
       if (l0buffer.size() == 0) continue;
       auto l0file = l0buffer.at(0);
-      //auto pacesster
-      Slice min(l0file->Min());
-      int curr = table->GetCountSmallerOrEqualThan(min);
-      if (!(c == st)) { 
-        int size = curr - prev;
-        if (size * 2 >= spf * prev_coord.Width())
-          PickGuard(guards, prev_coord, table, spf);
+      if (table) {
+        //auto pacesster
+        Slice min(l0file->Min());
+        int curr = table->GetCountSmallerOrEqualThan(min);
+        if (!(c == st)) { 
+          int size = curr - prev;
+          if (size * 2 >= spf * prev_coord.Width())
+            PickGuard(guards, prev_coord, table, spf);
+          guards.push_back(l0file);
+        }
+        prev = curr; 
+      } else {
         guards.push_back(l0file);
       }
-      prev = curr; 
       prev_coord = c;  
     }
   }
@@ -217,10 +226,15 @@ struct SBSkiplist {
     auto iter = NewIterator();
     iter->SeekToRoot();
     double max_score = iter->SeekScore(scorer, baseline, true);
-    if (containers)
-      PickFilesByIterator(iter, containers, table, spf);
-    delete iter;
-    return max_score;
+    if (scorer.isUpdated()) {
+      if (containers)
+          PickFilesByIterator(iter, containers, table, spf);
+      delete iter;
+      return max_score;
+    } else {
+      delete iter;
+      return 0;
+    }
   }
  private:
   void PrintDetailed(std::ostream& os) const {
