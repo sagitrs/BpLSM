@@ -37,6 +37,7 @@ struct SamplerTable : public std::map<std::string, int> {
     assert(p != end());
     if (p == begin())
       return 0;
+    p--;
     (*this)[skey] = p->second;
     return p->second;
   }

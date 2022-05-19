@@ -160,9 +160,11 @@ struct SBSkiplist {
       SamplerTable* reference = nullptr;
       if (global_compaction) {
         global->StopSampling();
-        //size_t f_buffer = base_buffer.size();
-        //size_t f_sample = global->size() / spf;
-        //double spf_local = spf * f_buffer / f_sample;
+        size_t f_buffer = base_buffer.size();
+        size_t f_sample = global->size() / spf;
+        assert(f_buffer > 0 && f_sample >= f_buffer);
+        spf_local = spf * f_sample / f_buffer;
+        reference = global;
         PickGuard(guards, iter->Current(), reference, spf_local);
         global->clear();
       } else {
@@ -199,7 +201,7 @@ struct SBSkiplist {
         int curr = table->GetCountSmallerOrEqualThan(min);
         if (!(c == st)) { 
           int size = curr - prev;
-          if (size * 2 >= spf * prev_coord.Width())
+          if (parent.height_ >= 3 && size * 2 >= spf * prev_coord.Width())
             PickGuard(guards, prev_coord, table, spf);
           guards.push_back(l0file);
         }
