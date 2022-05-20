@@ -339,9 +339,11 @@ struct SBSIterator : public Printable {
     for (int height = SBSHeight() - 1; height > 0; --height) {
       SeekToRoot();
       for (Dive(SBSHeight() - 1 - height); Valid(); Next()) 
-        if (scorer.Update(s_.Top().node_, s_.Top().height_)) { 
+        if (Current().Buffer().size() > 0) {
+          bool updated = scorer.Update(s_.Top().node_, s_.Top().height_);
+          if (!updated) continue;
           max_stack = s_;
-          if (!optimal)
+          if (optimal == false)
             return scorer.MaxScore();
         }
     }

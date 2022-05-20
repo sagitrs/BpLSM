@@ -57,7 +57,7 @@ struct SBSNodeOptions {
   size_t DefaultWidth() const { return width_[1]; }
 
   double needs_compaction_score_ = 1;
-  size_t max_compaction_files_ = 72;
+  size_t max_compaction_files_ = 64;
   bool force_compaction_ = 0;
   virtual double NeedsCompactionScore() const { 
     return force_compaction_ ? 0 : needs_compaction_score_; 
@@ -76,7 +76,7 @@ struct SBSNodeOptions {
 struct StatisticsOptions {
  private:
   static leveldb::Env* TimerEnv() { return leveldb::Env::Default(); }
-  size_t time_slice_ = 60 * 1000 * 1000;
+  size_t time_slice_ = 10 * 1000 * 1000;
   size_t time_count_ = 10;
   size_t time_slice_before_merge_ = 2;
   double B = 0.1, I = 0.9, D = 0.0;
@@ -140,7 +140,11 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   double LevelCapabilityConst(size_t level) const { return std::pow(1.0 / DefaultWidth(), level); }
  
   inline size_t ReadSampleConst() const { return 100; }
-  inline size_t WriteSampleConst() const { return 200; }
+  inline size_t WriteSampleConst() const { return 100; }
+  
+  inline size_t Level0CompactionSize() const { return 8; }
+  inline size_t Level0SlowDownSize() const { return 40; }
+  inline size_t Level0StopSize() const { return 80; }
   
  public:
   SBSOptions() = default;

@@ -227,7 +227,7 @@ struct SBSkiplist {
                           size_t spf) {
     auto iter = NewIterator();
     iter->SeekToRoot();
-    double max_score = iter->SeekScore(scorer, baseline, true);
+    double max_score = iter->SeekScore(scorer, baseline, baseline != 0);
     if (scorer.isUpdated()) {
       if (containers)
           PickFilesByIterator(iter, containers, table, spf);
@@ -463,6 +463,14 @@ struct SBSkiplist {
       //if (iter.Valid() && iter.Current().Next() == coord.node_)
       //  iter.CheckAbsorbEmptyNext(options_);
     }
+  }
+  size_t Level0Size() {
+    for (size_t i = head_->Height() - 1; i > 0; --i) {
+      size_t size = head_->GetLevel(i)->buffer_.size();
+      if (size > 0 && head_->Next(i) == nullptr)
+        return size;
+    }
+    return 0;
   }
 };
 

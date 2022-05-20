@@ -82,6 +82,11 @@ struct Scorer {
   }
   BFileVec& Buffer() const { return node_->GetLevel(height_)->buffer_; }
   size_t BufferSize() const { return node_->GetLevel(height_)->buffer_.size(); }
+  bool MayBeLevel0() const {
+    if (!node_->IsHead()) return 0;
+    SBSNode* next = node_->GetLevel(height_)->next_.load(std::memory_order_relaxed);
+    return next == nullptr;
+  }
   const GlobalStatus& Global() const { return *status_; }
   const Statistics& GetStatistics() { 
     return *node_->GetTreeStatistics(height_); 
