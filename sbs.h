@@ -201,7 +201,7 @@ struct SBSkiplist {
         int curr = table->GetCountSmallerOrEqualThan(min);
         if (!(c == st)) { 
           int size = curr - prev;
-          if (parent.height_ >= 3 && size * 2 >= spf * prev_coord.Width())
+          if (parent.height_ >= 3 && size * 3 >= spf * prev_coord.Width())
             PickGuard(guards, prev_coord, table, spf);
           guards.push_back(l0file);
         }
@@ -210,6 +210,26 @@ struct SBSkiplist {
         guards.push_back(l0file);
       }
       prev_coord = c;  
+    }
+    if (table) {
+      BFile* last_file = nullptr;
+      if (ed.Valid()) {
+        auto& l0buffer = ed.node_->GetLevel(0)->buffer_;
+        last_file = l0buffer.at(0);
+      } else {
+        auto iter = NewIterator();
+        iter->SeekToLast(0);
+        last_file = iter->Current().Buffer().GetOne();
+      }
+      {
+        Slice min(last_file->Min());
+        int curr = table->GetCountSmallerOrEqualThan(min);
+        if (!(ed == st)) { 
+          int size = curr - prev;
+          if (parent.height_ >= 3 && size * 3 >= spf * prev_coord.Width())
+            PickGuard(guards, prev_coord, table, spf);
+        }
+      }
     }
   }
   double PickFilesByScoreInHeight(int height, Scorer& scorer, double baseline,

@@ -212,7 +212,15 @@ struct SBSIterator : public Printable {
     Dive(SBSHeight() - 1 - level);
   }
   void SeekToLast(int level) {
-    assert(false);
+    SeekToRoot();
+    assert(s_.Top().height_ > 0);
+
+    while (s_.Top().height_ > 0) {
+      auto c = s_.Top().DownNode();
+      while (c.Next() != nullptr)
+        c.JumpNext();
+      s_.Push(c);
+    }
   }
   // ---------------------iterator operation end-----------------
  public:
