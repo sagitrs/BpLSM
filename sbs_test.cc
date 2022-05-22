@@ -39,9 +39,9 @@ TEST(SBSTest, Simple) {
     list.Put(BuildFile(i*10+0, i*10+9));
     //std::cout << list.ToString() << std::endl;
   }
-  RealBounded bound("70", "70");
+  Slice key("70");
   sagitrs::BFileVec container[3];
-  list.LookupKey(bound, container[0]);
+  list.LookupKey(key, container[0]);
 
   ASSERT_EQ(container[0].size(), 2);
   //---------------------------------------
