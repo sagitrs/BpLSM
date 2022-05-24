@@ -142,9 +142,10 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   inline size_t ReadSampleConst() const { return 100; }
   inline size_t WriteSampleConst() const { return 100; }
   
-  inline size_t Level0CompactionSize() const { return 8; }
-  inline size_t Level0SlowDownSize() const { return 40; }
-  inline size_t Level0StopSize() const { return 80; }
+  size_t level0_compaction_size_ = 16;
+  inline size_t Level0CompactionSize() const { return level0_compaction_size_; }
+  inline size_t Level0SlowDownSize() const { return level0_compaction_size_ * 3 / 2; }
+  inline size_t Level0StopSize() const { return level0_compaction_size_ * 2; }
   
  public:
   SBSOptions() = default;

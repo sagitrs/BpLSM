@@ -24,16 +24,16 @@ struct LevelNode : public Printable {
    private:
     //bool stats_dirty_;
    public:
-    Statistics *stats_; 
+
     uint64_t update_time_;
+    Statistics *stats_; 
     BFile* hottest_;
-    
-    uint64_t max_runs_;
+    double max_runs_;
 
     VariableTable(const StatisticsOptions& stat_options) :
       //stats_dirty_(true),
-      stats_(nullptr), 
       update_time_(0),
+      stats_(nullptr), 
       hottest_(nullptr),
       max_runs_(0) {}
 
