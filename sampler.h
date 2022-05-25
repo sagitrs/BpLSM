@@ -4,7 +4,9 @@
 #include <map>
 #include <string>
 
+#include "leveldb/slice.h"
 #include "../../db/memtable.h"
+using leveldb::Slice;
 
 namespace sagitrs {
 
@@ -50,32 +52,34 @@ struct Sampler {
   };
   
   SamplerOptions options_;
-  SamplerTable read_sampler_, write_sampler_, global_sampler_;
-  std::atomic<uint64_t> memory_usage_, record_size_;
+  SamplerTable read_sampler_, write_sampler_;//, global_sampler_;
+  std::atomic<uint64_t> memory_usage_, record_count_;
  public:
   Sampler() : 
     options_(),
     write_sampler_(), read_sampler_(),
-    memory_usage_(0), record_size_(500)
+    memory_usage_(0), record_count_(0)
   {}
   ~Sampler() {}
   void WriteSample(const Slice& key, size_t value_size) {
     memory_usage_ += key.size() + value_size;
+    record_count_ ++;
     write_sampler_.Add(key);
-    global_sampler_.Add(key);
+    //global_sampler_.Add(key);
   }
   void ReadSample(const Slice& key) { read_sampler_.Add(key); }
   SamplerTable& WriteTable() { return write_sampler_; }
   SamplerTable& ReadTable() { return read_sampler_; }
-  SamplerTable& GlobalTable() { return global_sampler_; }
-  void GlobalClear() {
-    uint64_t l = record_size_.load(std::memory_order_relaxed);
-    record_size_.store((l + RecordSize()) / 2, std::memory_order_relaxed);
-    memory_usage_ = 0;
-    global_sampler_.clear();
-  }
+  //SamplerTable& GlobalTable() { return global_sampler_; }
+  //void GlobalClear() {
+  //  uint64_t l = record_size_.load(std::memory_order_relaxed);
+  //  record_size_.store((l + RecordSize()) / 2, std::memory_order_relaxed);
+  //  memory_usage_ = 0;
+    //global_sampler_.clear();
+  //}
   double RecordSize() const { 
-    return 1.0 * memory_usage_.load(std::memory_order_relaxed) / global_sampler_.size(); 
+    return 1.0 * memory_usage_.load(std::memory_order_relaxed) 
+               / record_count_.load(std::memory_order_relaxed); 
   }
 };
 
