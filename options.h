@@ -155,6 +155,13 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 };
 
 struct CompactionOptions {
+  static const size_t PageConst = 4096;
+  static const size_t OutputFileMinConst = 4;
+  CompactionOptions(const SBSOptions& options, sagitrs::SamplerTable* table = nullptr)
+    : table_(table), 
+      sample_per_file_(options.MaxFileSize() / options.WriteSampleConst() / PageConst),
+      sample_per_output_file_(sample_per_file_ * OutputFileMinConst),
+      force_pick_(true) {}
   sagitrs::SamplerTable* table_;
   size_t sample_per_file_;
   size_t sample_per_output_file_;
