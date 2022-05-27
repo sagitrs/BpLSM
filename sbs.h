@@ -171,55 +171,71 @@ struct SBSkiplist {
       vec.AddAll(result);
     }
   }
-  void PickGuard(BFileVec& guards, sagitrs::Coordinates parent, 
-                 SamplerTable* table, size_t spf, bool force_pick = true) {
+  struct Shard {
+    Coordinates coord_;
+    BFile* guard_file_;
+    size_t sample_covers_;
+    bool picked_;
+    Shard(const Coordinates& coord, BFile* file, size_t size)
+      : coord_(coord), guard_file_(file), sample_covers_(size),
+        picked_(false) {}
+  };
+  void PickShard(std::vector<Shard>& shards, sagitrs::Coordinates parent, 
+                 SamplerTable* table) {
     auto st = parent; st.JumpDown();
     auto ed = parent; ed.JumpNext(); ed.JumpDown();
-
-    int prev = 0;
+    size_t prev = 0;
     Coordinates prev_coord(st);
     for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
       auto& l0buffer = c.node_->GetLevel(0)->buffer_;
       if (l0buffer.size() == 0) continue;
       auto l0file = l0buffer.at(0);
-      if (table) {
-        //auto pacesster
+      //auto pacesster
         Slice min_key(l0file->Min());
-        int curr = table->GetCountSmallerOrEqualThan(min_key);
+        int curr = table ? table->GetCountSmallerOrEqualThan(min_key) : 0;
         if (!(c == st)) { 
           int size = curr - prev;
-          bool out_of_size = size >= spf;
-          bool divable = parent.height_ >= 3;
-          if (out_of_size && divable)
-            PickGuard(guards, prev_coord, table, spf, false);
-          if (force_pick || size * 4 >= spf)
-            guards.push_back(l0file);
+          shards.emplace_back(prev_coord, l0file, size);
         }
-        prev = curr; 
-      } else {
-        guards.push_back(l0file);
-      }
       prev_coord = c;  
     }
-    if (table) {
-      BFile* last_file = nullptr;
-      if (ed.Valid()) {
-        auto& l0buffer = ed.node_->GetLevel(0)->buffer_;
-        last_file = l0buffer.at(0);
-      } else {
-        auto iter = NewIterator();
-        iter->SeekToLast(0);
-        last_file = iter->Current().Buffer().GetOne();
+    BFile* last_file = nullptr;
+    if (ed.Valid()) {
+      auto& l0buffer = ed.node_->GetLevel(0)->buffer_;
+      last_file = l0buffer.at(0);
+    } else {
+      auto iter = NewIterator();
+      iter->SeekToLast(0);
+      last_file = iter->Current().Buffer().GetOne();
+    }
+    {
+      Slice min_key(last_file->Min());
+      int curr = table ? table->GetCountSmallerOrEqualThan(min_key) : 0;
+      if (!(ed == st)) { 
+        int size = curr - prev;
+        shards.emplace_back(prev_coord, last_file, size);
       }
-      {
-        Slice min_key(last_file->Min());
-        int curr = table->GetCountSmallerOrEqualThan(min_key);
-        if (!(ed == st)) { 
-          int size = curr - prev;
-          if (parent.height_ >= 3 && size >= spf)
-            PickGuard(guards, prev_coord, table, spf, false);
-        }
+    }
+  }
+
+  void PickGuard(BFileVec& guards, sagitrs::Coordinates parent, 
+                 SamplerTable* table, size_t spf, bool force_pick = true) {
+    std::vector<Shard> shards;
+    PickShard(shards, parent, table);
+    for (size_t i = 0; i < shards.size(); ++i) {
+      Shard& tree = shards[i];
+      bool out_of_tree_size = tree.sample_covers_ >= spf;
+      bool out_of_file_size = tree.sample_covers_ * 4 >= spf;
+      bool divable = parent.height_ >= 3;
+      if (force_pick || out_of_file_size) {
+        tree.picked_ = 1;
+        if (i + 1 < shards.size())
+          shards[i+1].picked_ = true;
       }
+      if (tree.picked_)
+        guards.push_back(tree.guard_file_);
+      if (out_of_tree_size && divable)
+        PickGuard(guards, tree.coord_, table, spf, false);
     }
   }
   

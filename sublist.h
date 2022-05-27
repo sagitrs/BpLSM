@@ -102,18 +102,16 @@ struct SubSBS {
         }
       }
     }
-
-    //for (auto file : dfiles_) 
-    //  assert(dnums.find(file->Identifier()) != dnums.end());
     assert(dfiles_.size() == dnums.size());
     return 1;
   }
+
   void Transform(const std::vector<FileMetaData*>& generated_files, std::vector<BFile*>& newchild) {
     sagitrs::BFileVec buffer;
     std::vector<FileGenData> gendata;
 
     std::vector<FileMetaData*> generated(generated_files);
-    std::sort(generated.begin(), generated.end(), [](FileMetaData* a, FileMetaData* b){
+    std::sort(generated.begin(), generated.end(), [](FileMetaData* a, FileMetaData* b) {
       return a->smallest.user_key().compare(b->smallest.user_key()) < 0;});
 
     size_t curr = overlap_begin_ + 1;
@@ -226,8 +224,8 @@ struct SubSBS {
       }
     } else {
       for (auto file : files) {
-        bool direct = TreePut(file, head_, height_);
-        if (!direct) {
+        bool dive = TreePut(file, head_, height_);
+        if (!dive) {
           bool d = TreePut(file, head_, height_);
           assert(!d);
         }
