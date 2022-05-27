@@ -7,6 +7,8 @@
 #include <algorithm>
 #include "leveldb/env.h"
 
+#include "sampler.h"
+
 namespace sagitrs {
 
 #define STATISTICS_PREVIOUS  1
@@ -150,6 +152,13 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
  public:
   SBSOptions() = default;
   SBSOptions(const SBSOptions& options) = default;
+};
+
+struct CompactionOptions {
+  sagitrs::SamplerTable* table_;
+  size_t sample_per_file_;
+  size_t sample_per_output_file_;
+  bool force_pick_;
 };
 
 }

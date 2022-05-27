@@ -125,8 +125,8 @@ struct SBSkiplist {
     delete iter;
     return res;
   }
-  void PickCompactionFilesByIterator(SBSIterator* iter, BFileVec* containers, 
-                           SamplerTable* table, size_t spf) {
+  void PickCompactionFilesByIterator(const CompactionOptions& options,
+                                     SBSIterator* iter, BFileVec* containers) {
     if (containers == nullptr) return;
     
     BFileVec& base_buffer = containers[0];
@@ -156,7 +156,7 @@ struct SBSkiplist {
         l0guards.push_back(l0file);
       }
     } else {
-      PickGuard(guards, iter->Current(), table, spf);
+      PickGuard(options, guards, iter->Current(), options.force_pick_);
       Filter(guards, base_buffer);
     }
   }
@@ -218,24 +218,23 @@ struct SBSkiplist {
     }
   }
 
-  void PickGuard(BFileVec& guards, sagitrs::Coordinates parent, 
-                 SamplerTable* table, size_t spf, bool force_pick = true) {
+  void PickGuard(const CompactionOptions& options, BFileVec& guards, 
+                 sagitrs::Coordinates parent, bool force_pick) {
     std::vector<Shard> shards;
-    PickShard(shards, parent, table);
+    PickShard(shards, parent, options.table_);
     for (size_t i = 0; i < shards.size(); ++i) {
       Shard& tree = shards[i];
-      bool out_of_tree_size = tree.sample_covers_ >= spf;
-      bool out_of_file_size = tree.sample_covers_ * 4 >= spf;
+      bool out_of_size = tree.sample_covers_ >= options.sample_per_output_file_;
       bool divable = parent.height_ >= 3;
-      if (force_pick || out_of_file_size) {
+      if (force_pick || out_of_size) {
         tree.picked_ = 1;
         if (i + 1 < shards.size())
-          shards[i+1].picked_ = true;
+          shards[i+1].picked_ = 1;
       }
       if (tree.picked_)
         guards.push_back(tree.guard_file_);
-      if (out_of_tree_size && divable)
-        PickGuard(guards, tree.coord_, table, spf, false);
+      if (out_of_size && divable)
+        PickGuard(options, guards, tree.coord_, false);
     }
   }
   
@@ -248,22 +247,6 @@ struct SBSkiplist {
     } else {
       delete iter;
       return nullptr;
-    }
-  }
-  double PickFilesByScore(Scorer& scorer, double baseline,
-                          BFileVec* containers, SamplerTable* table,
-                          size_t spf) {
-    auto iter = NewIterator();
-    iter->SeekToRoot();
-    double max_score = iter->SeekScore(scorer, baseline, baseline != 0);
-    if (scorer.isUpdated()) {
-      if (containers)
-          PickCompactionFilesByIterator(iter, containers, table, spf);
-      delete iter;
-      return max_score;
-    } else {
-      delete iter;
-      return 0;
     }
   }
  private:
