@@ -140,7 +140,7 @@ struct BFileVec : public BFileVecBase,
         std::to_string(operator[](i)->Identifier())
       );
   }
-  size_t GetValueWidth(const Bounded& range) {
+  size_t GetValueWidth(const Bounded& range) const {
     Slice a(range.Min()), b(range.Max());
     size_t width = 1;
     for (auto & child : *this)
@@ -148,6 +148,12 @@ struct BFileVec : public BFileVecBase,
         width ++;
     return width;
   }
+  size_t TotalFileSize() const {
+    size_t total = 0;
+    for (BFile* file : *this)
+      total += file->Data()->file_size;
+    return total;
+  } 
  private:
   const BFileVecBase::const_iterator Locate(uint64_t id) const {
     for (auto iter = begin(); iter != end(); ++iter) 

@@ -86,16 +86,17 @@ struct SubSBS {
     }
 
     bool two_level_compaction = recursive.size() != 0;
-    LevelNode* node_with_all = 
-      two_level_compaction ? 
-        BuildLNode(head_->GetLevel(height_), nullptr, nullptr) :
-        nullptr;
+    //LevelNode* node_with_all = 
+    //  two_level_compaction ? 
+    //    BuildLNode(head_->GetLevel(height_), nullptr, nullptr) :
+    //    nullptr;
 
     overlap_begin_ = -1;
     overlap_end_ = next_level_.size();
     for (int i = 0; i < next_level_.size(); ++i) {
       const BFileVec& buffer = next_level_[i]->GetLevel(height_ - 1)->buffer_;
       LevelNode* newnode = nullptr;
+      LevelNode* newparent = nullptr;
       if (buffer.empty()) continue;
       auto res = buffer.Compare(range);
       if (res == BGreater && overlap_end_ > i) 
@@ -108,19 +109,26 @@ struct SubSBS {
           if (recursive.find(file->Identifier()) != recursive.end()) {
             dfiles_.push_back(file);
             recursive.erase(file->Identifier());
-            node_with_all->Add(file);
-            if (!newnode)
-              newnode = BuildLNode(next_level_[i]->GetLevel(height_ - 1), nullptr, nullptr); 
+            //node_with_all->Add(file);
+            if (!newnode) {
+              assert(newparent == nullptr);
+              newnode = BuildLNode(next_level_[i]->GetLevel(height_ - 1), nullptr, nullptr);
+              newparent = BuildLNode(head_->GetLevel(height_), nullptr, nullptr); 
+            }
             newnode->Del(*file); 
+            newparent->Add(file);
           }
         }
       }
-      if (newnode) 
+      if (newnode) {
+        assert(newparent);
+        Replace(head_, height_, newparent);
         Replace(next_level_[i], height_ - 1, newnode);
+      }
     }
     assert(recursive.size() == 0);
-    if (two_level_compaction)
-      Replace(head_, height_, node_with_all);
+    //if (two_level_compaction)
+    //  Replace(head_, height_, node_with_all);
     return 1;
   }
 

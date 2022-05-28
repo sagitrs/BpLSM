@@ -156,6 +156,18 @@ struct SBSkiplist {
         l0guards.push_back(l0file);
       }
     } else {
+      /*for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
+        auto& buffer = c.node_->GetLevel(height - 1)->buffer_;
+        if (buffer.size() == 0) continue;
+        size_t total = buffer.TotalFileSize();
+        if (total < options_.MaxFileSize() / 5) {
+          for (auto file : buffer) {
+            if (base_buffer.Compare(*file) != BOverlap) 
+              continue;
+            child_buffer.push_back(file);
+          }
+        }
+      }*/
       PickGuard(options, guards, iter->Current(), options.force_pick_);
       Filter(guards, base_buffer);
     }
