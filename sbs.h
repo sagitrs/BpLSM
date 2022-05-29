@@ -75,7 +75,8 @@ struct SBSkiplist {
   }
   SubSBS* LookupTree(const BFileEdit& edit) {//, std::vector<SBSNode*>& prev
     auto iter = NewIterator();
-    std::vector<SBSNode*> prev;
+    bool found = false;
+    Coordinates suspect(nullptr, 0);
     for (auto file : edit.deleted_) {
       RealBounded bound(file->smallest.user_key(),file->smallest.user_key());
       iter->SeekToRoot();
@@ -83,24 +84,49 @@ struct SBSkiplist {
       BFile* target = iter->SeekValueInRoute(file->number);
       size_t height = iter->Current().height_;
       if (height == 0) { 
-        iter->Float(); 
-        height = iter->Current().height_; 
+        if (!found) {
+          iter->Float(); 
+          suspect = iter->Current();
+          found = 1;
+        }
+        assert(suspect.height_ == 1);
+        break;
       }
-      SBSNode* node = iter->Current().node_;
-      iter->Prev();
-      SBSNode* prev = iter->Current().node_;
-      //if (!node->IsHead()) {
-      //  iter->SeekCurrentPrev(prev);
-      //  for (size_t i = 0; i < node->Height(); ++i)
-      //    assert(prev[i]->Next(i) == node);
-      //}
-      delete iter;
-      return new SubSBS(node, height, prev);
+      if (!found) {
+        suspect = iter->Current();
+        found = 1;
+        continue;
+      }
+      Coordinates current = iter->Current();
+      if (suspect.height_ == current.height_) {
+        if (suspect.node_ == current.node_)
+          continue; // search for another node.
+        // they have common parent.
+        iter->Float();
+        auto iter2 = NewIterator();
+        iter2->SeekNode(suspect);
+        iter2->Float();
+        assert(iter->Current() == iter2->Current());
+        suspect = iter->Current();
+        delete iter2;
+        break;
+      } else {
+        if (suspect.height_ < current.height_) {
+          Coordinates mid = current; 
+          current = suspect;
+          suspect = mid;
+        }
+        //suspect shall be current's parent.
+        iter->Float();
+        assert(iter->Current() == suspect);
+        break;
+      }
     }
-    // no level 0 files are included.
+    iter->SeekNode(suspect);
+    iter->Prev();
+    SBSNode* prev = iter->Current().node_;
     delete iter;
-    assert(false);
-    return nullptr;
+    return new SubSBS(suspect.node_, suspect.height_, prev);
   }
   void UpdateStatistics(const BFile& file, uint32_t label, int64_t diff, int64_t time) {
     auto iter = NewIterator();
@@ -156,18 +182,17 @@ struct SBSkiplist {
         l0guards.push_back(l0file);
       }
     } else {
-      /*for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
+      for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
         auto& buffer = c.node_->GetLevel(height - 1)->buffer_;
         if (buffer.size() == 0) continue;
-        size_t total = buffer.TotalFileSize();
-        if (total < options_.MaxFileSize() / 5) {
-          for (auto file : buffer) {
-            if (base_buffer.Compare(*file) != BOverlap) 
-              continue;
-            child_buffer.push_back(file);
-          }
+        for (auto file : buffer) {
+          if (file->Data()->file_size >= options_.MaxFileSize() / 5)
+            continue;
+          if (base_buffer.Compare(*file) != BOverlap) 
+            continue;
+          child_buffer.push_back(file);
         }
-      }*/
+      }
       PickGuard(options, guards, iter->Current(), options.force_pick_);
       Filter(guards, base_buffer);
     }

@@ -72,8 +72,8 @@ struct SubSBS {
     BFile* file = buffer.GetOne();
     return file;
   }
-  bool FindOverlap(const std::vector<FileMetaData*>& deleted) {
-    std::set<uint64_t> recursive;
+  bool FindOverlap(const std::vector<FileMetaData*>& deleted, std::set<uint64_t>& recursive) {
+    //std::set<uint64_t> recursive;
     for (auto file : deleted) 
       recursive.insert(file->number);
     
@@ -85,18 +85,12 @@ struct SubSBS {
       recursive.erase(file->Identifier());
     }
 
-    bool two_level_compaction = recursive.size() != 0;
-    //LevelNode* node_with_all = 
-    //  two_level_compaction ? 
-    //    BuildLNode(head_->GetLevel(height_), nullptr, nullptr) :
-    //    nullptr;
+    size_t counter = 0;
 
     overlap_begin_ = -1;
     overlap_end_ = next_level_.size();
     for (int i = 0; i < next_level_.size(); ++i) {
       const BFileVec& buffer = next_level_[i]->GetLevel(height_ - 1)->buffer_;
-      LevelNode* newnode = nullptr;
-      LevelNode* newparent = nullptr;
       if (buffer.empty()) continue;
       auto res = buffer.Compare(range);
       if (res == BGreater && overlap_end_ > i) 
@@ -108,25 +102,13 @@ struct SubSBS {
         for (auto file : buffer) {
           if (recursive.find(file->Identifier()) != recursive.end()) {
             dfiles_.push_back(file);
-            recursive.erase(file->Identifier());
-            //node_with_all->Add(file);
-            if (!newnode) {
-              assert(newparent == nullptr);
-              newnode = BuildLNode(next_level_[i]->GetLevel(height_ - 1), nullptr, nullptr);
-              newparent = BuildLNode(head_->GetLevel(height_), nullptr, nullptr); 
-            }
-            newnode->Del(*file); 
-            newparent->Add(file);
+            counter ++;
+            //recursive.erase(file->Identifier());
           }
         }
       }
-      if (newnode) {
-        assert(newparent);
-        Replace(head_, height_, newparent);
-        Replace(next_level_[i], height_ - 1, newnode);
-      }
     }
-    assert(recursive.size() == 0);
+    assert(recursive.size() == counter);
     //if (two_level_compaction)
     //  Replace(head_, height_, node_with_all);
     return 1;
@@ -253,6 +235,7 @@ struct SubSBS {
         bool dive = TreePut(file, head_, height_);
         if (!dive) {
           bool d = TreePut(file, head_, height_);
+          std::cout << "Error : Compaction Result Install Back." << std::endl;
           assert(!d);
         }
       }
@@ -272,13 +255,35 @@ struct SubSBS {
     }    
     return 1;
   }
+  bool RemoveChild(const std::set<uint64_t>& recursive) {
+    size_t counter = 0;
+    for (int i = 0; i < next_level_.size(); ++i) {
+      const BFileVec& buffer = next_level_[i]->GetLevel(height_ - 1)->buffer_;
+      LevelNode* lnode = nullptr;
+      for (auto file : buffer) {
+        if (recursive.find(file->Identifier()) != recursive.end()) {
+          counter ++;
+          if (!lnode) {
+            lnode = BuildLNode(next_level_[i]->GetLevel(height_ - 1), nullptr, nullptr);
+          }
+          lnode->Pop(*file);
+        }
+      }
+      if (lnode) 
+        Replace(next_level_[i], height_-1, lnode);
+    }
+    assert(height_ == 1 || counter == recursive.size());
+    return height_ == 1 || counter == recursive.size();
+  }
   bool Build(const BFileEdit& edit) {
     std::vector<BFile*> newchild;
-    bool ok = FindOverlap(edit.deleted_);
+    std::set<uint64_t> child_buffer;
+    bool ok = FindOverlap(edit.deleted_, child_buffer);
     assert(ok);
     Transform(edit.generated_, newchild);
     ok = BuildWith(newchild);
     assert(ok);
+    ok = RemoveChild(child_buffer);
     return ok;
   }
 

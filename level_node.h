@@ -90,9 +90,9 @@ struct LevelNode : public Printable {
     table_.SetDirty();
     //table_.tree_->MergeStatistics(*value); 
   }
-  BFile* Del(const BFile& value) { 
+  BFile* Pop(const BFile& value) { 
     // warning: memory leak.
-    auto res = buffer_.Del(value.Identifier()); 
+    auto res = buffer_.Pop(value.Identifier()); 
     table_.SetDirty();
     return res;
   }

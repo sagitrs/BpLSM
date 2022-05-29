@@ -96,7 +96,7 @@ struct BFileVec : public BFileVecBase,
     // statistics adjust.
     SetStatsDirty();
   }
-  BFile* Del(uint64_t id) {
+  BFile* Pop(uint64_t id) {
     auto iter = Locate(id);
     if (iter == end()) return nullptr;
     // statistics adjust.

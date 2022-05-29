@@ -203,9 +203,9 @@ struct SBSNode : public Printable {
     if (Pacesetter() == nullptr || Guard().compare(file->Min()) > 0)
       SetPacesetter(file);
   }
-  BFile* Del(size_t height, const BFile& range) {
-    auto res = GetLevel(height)->Del(range);
-    if (Guard().compare(range.Min()) == 0)
+  BFile* Del(size_t height, const BFile& file) {
+    auto res = GetLevel(height)->Pop(file);
+    if (Guard().compare(file.Min()) == 0)
       Rebound();
     res->SetDeletedLevel(height);
     return res;
@@ -317,10 +317,10 @@ struct SBSNode : public Printable {
           }
         }
         for (auto& v : tmp->buffer_)
-          GetLevel(height)->Del(*v);
+          GetLevel(height)->Pop(*v);
         if (force)
           for (auto& v : *force)
-            GetLevel(height)->Del(*v);
+            GetLevel(height)->Pop(*v);
       }
       middle->IncHeight(tmp); 
       SetNext(height, middle);
