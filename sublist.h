@@ -204,6 +204,7 @@ struct SubSBS {
     return 0;
   }
   bool BuildWith(const std::vector<BFile*>& files) {
+    LevelNode* newhead = BuildLNode(nullptr, nullptr, head_->Next(height_));
     if (level1_compaction_) {
       // build nodes from gendata.
       // make sure gendata is sorted.
@@ -231,13 +232,12 @@ struct SubSBS {
         next_level_[overlap_begin_]->SetNext(height_ - 1, node);
       }
     } else {
-      LevelNode* newhead = BuildLNode(nullptr, nullptr, head_->Next(height_));
       for (auto file : files) {
         bool dive = TreePut(file, head_, height_);
         if (!dive) 
           newhead->Add(file);
       }
-      Replace(head_, height_, newhead);
+      //Replace(head_, height_, newhead);
     }
     SBSNode* next = head_->Next(height_);
     size_t w1 = prev_ ? prev_->GeneralWidth(height_) : 0;
@@ -249,9 +249,10 @@ struct SubSBS {
       prev_->SetNext(height_, next);
       Replace(head_, height_, nullptr);
       head_->DecHeight();
+      delete newhead;
     } else {
-      auto lnode = BuildLNode(nullptr, nullptr, next);
-      Replace(head_, height_, lnode);
+      //auto lnode = BuildLNode(nullptr, nullptr, next);
+      Replace(head_, height_, newhead);
     }    
     return 1;
   }

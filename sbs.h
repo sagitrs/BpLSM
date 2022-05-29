@@ -224,6 +224,7 @@ struct SBSkiplist {
     auto ed = parent; ed.JumpNext(); ed.JumpDown();
     size_t prev = 0;
     Coordinates prev_coord(st);
+    BFile* prev_guard = nullptr;
     for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
       auto guard = c.node_->Pacesetter();
       //if (l0buffer.size() == 0) continue;
@@ -233,9 +234,10 @@ struct SBSkiplist {
       int curr = table ? table->GetCountSmallerOrEqualThan(min_key) : 0;
       if (!(c == st)) { 
         int size = curr - prev;
-        shards.emplace_back(prev_coord, guard, size);
+        shards.emplace_back(prev_coord, prev_guard, size);
       }
       prev_coord = c;  
+      prev_guard = guard;
     }
     BFile* last_file = nullptr;
     if (ed.Valid()) {
@@ -252,7 +254,7 @@ struct SBSkiplist {
       int curr = table ? table->GetCountSmallerOrEqualThan(min_key) : 0;
       if (!(ed == st)) { 
         int size = curr - prev;
-        shards.emplace_back(prev_coord, last_file, size);
+        shards.emplace_back(prev_coord, prev_guard, size);
       }
     }
   }
