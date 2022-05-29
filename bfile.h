@@ -7,18 +7,20 @@ namespace sagitrs {
 
 struct BFile : virtual public Bounded, virtual public Identifiable, 
                public Statistics {
+  enum BFileType { TypeTape, TypeHole };
  private:
   int deleted_level_;
+  BFileType type_;
   leveldb::FileMetaData* file_meta_;
  public:
   // for deletion only.
   BFile(leveldb::FileMetaData* f)
   : Statistics(),
-    deleted_level_(-1),
+    deleted_level_(-1), type_(TypeHole),
     file_meta_(f) { f->refs++; } 
   BFile(leveldb::FileMetaData* f, const Statistics& init) 
   : Statistics(init), 
-    deleted_level_(-1),
+    deleted_level_(-1), type_(TypeHole),
     file_meta_(f) { f->refs++; }
   virtual ~BFile() {
     if (file_meta_ && --file_meta_->refs <= 0)
@@ -34,6 +36,8 @@ struct BFile : virtual public Bounded, virtual public Identifiable,
 
   void SetDeletedLevel(int l) { deleted_level_ = l; }
   int DeletedLevel() const { return deleted_level_; }
+  void SetType(BFileType type) { type_ = type; }
+  BFileType Type() const { return type_; }
 
   using Statistics::UpdateTime;
   using Statistics::UpdateStatistics;

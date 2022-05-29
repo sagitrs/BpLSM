@@ -160,6 +160,13 @@ struct BFileVec : public BFileVecBase,
       total += (file->Data()->file_size < (64 << 10));
     return total;
   }
+  size_t HoleSize() const {
+    size_t hole = 0;
+    for (BFile* file : *this)
+      if (file->Type() == BFile::TypeHole)
+        hole ++;
+    return hole;
+  }
  private:
   const BFileVecBase::const_iterator Locate(uint64_t id) const {
     for (auto iter = begin(); iter != end(); ++iter) 

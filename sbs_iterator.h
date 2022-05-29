@@ -554,10 +554,11 @@ struct SBSIterator : public Printable {
       }
 
       // Check file bound since guard in this tree has changed.
-      for (auto element : s_.Top().Buffer()) {
+      for (BFile* file : s_.Top().Buffer()) 
+       if (file->Type() == BFile::TypeHole) {
         for (auto i = st; i.Valid() && !(i == ed); i.JumpNext()) {
-          if (i.Fit(*element, height == 0)) {
-            reinserter_.push_back(element);
+          if (i.Fit(*file, height == 0)) {
+            reinserter_.push_back(file);
             break;
           }
         }

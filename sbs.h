@@ -152,7 +152,7 @@ struct SBSkiplist {
     delete iter;
     return res;
   }
-  void PickCompactionFilesByIterator(const CompactionOptions& options,
+  void PickCompactionFilesByIterator(const sagitrs::SBSOptions& options,
                                      SBSIterator* iter, BFileVec* containers) {
     if (containers == nullptr) return;
     
@@ -182,7 +182,7 @@ struct SBSkiplist {
         child_buffer.push_back(l0file);
         l0guards.push_back(l0file);
       }
-    } else {
+    } else {/*
       for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
         auto& buffer = c.node_->GetLevel(height - 1)->buffer_;
         if (buffer.size() == 0) continue;
@@ -193,7 +193,7 @@ struct SBSkiplist {
             continue;
           child_buffer.push_back(file);
         }
-      }
+      }*/
       PickGuard(options, guards, iter->Current(), options.force_pick_);
       Filter(guards, base_buffer);
     }
@@ -259,14 +259,14 @@ struct SBSkiplist {
     }
   }
 
-  bool PickGuard(const CompactionOptions& options, BFileVec& guards, 
+  bool PickGuard(const sagitrs::SBSOptions& options, BFileVec& guards, 
                  sagitrs::Coordinates parent, bool force_pick) {
     std::vector<Shard> shards;
     bool guard_picked = false;
     PickShard(shards, parent, options.table_);
     for (size_t i = 0; i < shards.size(); ++i) {
       Shard& tree = shards[i];
-      bool out_of_size = tree.sample_covers_ >= options.sample_per_output_file_;
+      bool out_of_size = tree.sample_covers_ >= options.SamplePerOutputFile();
       bool divable = parent.height_ >= 3;
       if (force_pick || out_of_size) {
         if (i > 0)

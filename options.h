@@ -123,7 +123,17 @@ struct StatisticsOptions {
   virtual double kDifferentiationWeight() const { return D; }
 };
 
-struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
+struct CompactionOptions {
+  //CompactionOptions(const SBSOptions& options, sagitrs::SamplerTable* table = nullptr)
+  //  : table_(table), 
+  //    sample_per_file_(options.MaxFileSize() / options.CompactSampleConst() / PageConst),
+  //    sample_per_output_file_(sample_per_file_ / OutputFileMinConst),
+  //    force_pick_(true) {}
+  sagitrs::SamplerTable* table_;
+};
+struct SBSOptions : public SBSNodeOptions, 
+                    public StatisticsOptions,
+                    public CompactionOptions {
 
 // Statistics args: 
 
@@ -150,23 +160,19 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   inline size_t Level0SlowDownSize() const { return level0_compaction_size_ * 3 / 2; }
   inline size_t Level0StopSize() const { return level0_compaction_size_ * 2; }
   
+  static const size_t PageConst = 4096;
+  static const size_t OutputFileMinConst = 4;
+  size_t SamplePerInputFile() const { return MaxFileSize() / CompactSampleConst() / PageConst; }
+  size_t SamplePerOutputFile() const { return SamplePerInputFile() / OutputFileMinConst; }
+  //size_t sample_per_file_ = max_file / options.CompactSampleConst() / PageConst
+  //size_t sample_per_output_file_;
+  bool force_pick_ = 1;
+  bool ForcePick() const { return force_pick_; }
+
  public:
   SBSOptions() = default;
   SBSOptions(const SBSOptions& options) = default;
 };
 
-struct CompactionOptions {
-  static const size_t PageConst = 4096;
-  static const size_t OutputFileMinConst = 4;
-  CompactionOptions(const SBSOptions& options, sagitrs::SamplerTable* table = nullptr)
-    : table_(table), 
-      sample_per_file_(options.MaxFileSize() / options.CompactSampleConst() / PageConst),
-      sample_per_output_file_(sample_per_file_ / OutputFileMinConst),
-      force_pick_(true) {}
-  sagitrs::SamplerTable* table_;
-  size_t sample_per_file_;
-  size_t sample_per_output_file_;
-  bool force_pick_;
-};
 
 }

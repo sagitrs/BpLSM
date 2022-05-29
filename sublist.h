@@ -233,8 +233,14 @@ struct SubSBS {
       }
     } else {
       for (auto file : files) {
-        bool dive = TreePut(file, head_, height_);
-        if (!dive) 
+        size_t size = file->Data()->file_size;
+        bool dive = false;
+        if (size * 2 >= Options().SamplePerOutputFile()) {
+          file->SetType(BFile::TypeHole);
+          dive = TreePut(file, head_, height_);
+        } else 
+          file->SetType(BFile::TypeTape);
+        if (file->Type() == BFile::TypeTape || !dive) 
           newhead->Add(file);
       }
       //Replace(head_, height_, newhead);
