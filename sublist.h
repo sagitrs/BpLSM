@@ -231,19 +231,19 @@ struct SubSBS {
         next_level_[overlap_begin_]->SetNext(height_ - 1, node);
       }
     } else {
+      LevelNode* newhead = BuildLNode(nullptr, nullptr, head_->Next(height_));
       for (auto file : files) {
         bool dive = TreePut(file, head_, height_);
-        if (!dive) {
-          bool d = TreePut(file, head_, height_);
-          std::cout << "Error : Compaction Result Install Back." << std::endl;
-          assert(!d);
-        }
+        if (!dive) 
+          newhead->Add(file);
       }
+      Replace(head_, height_, newhead);
     }
     SBSNode* next = head_->Next(height_);
     size_t w1 = prev_ ? prev_->GeneralWidth(height_) : 0;
     size_t w2 = head_->GeneralWidth(height_);
-    if (prev_ && head_->Height() == height_ + 1 && 
+    if (head_->GetLevel(height_)->buffer_.size() == 0 && 
+        prev_ && head_->Height() == height_ + 1 && 
         (w2 < Options().MinWidth() || w1 < Options().MinWidth())) {
       // this lnode is better to be deleted.
       prev_->SetNext(height_, next);

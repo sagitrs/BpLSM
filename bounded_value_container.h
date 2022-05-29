@@ -154,6 +154,12 @@ struct BFileVec : public BFileVecBase,
       total += file->Data()->file_size;
     return total;
   } 
+  size_t SmallFileSize() const {
+    size_t total = 0;
+    for (BFile* file : *this)
+      total += (file->Data()->file_size < (64 << 10));
+    return total;
+  }
  private:
   const BFileVecBase::const_iterator Locate(uint64_t id) const {
     for (auto iter = begin(); iter != end(); ++iter) 

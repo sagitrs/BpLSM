@@ -142,7 +142,8 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
   double LevelCapabilityConst(size_t level) const { return std::pow(1.0 / DefaultWidth(), level); }
  
   inline size_t ReadSampleConst() const { return 100; }
-  inline size_t WriteSampleConst() const { return 50; }
+  inline size_t WriteSampleConst() const { return 100; }
+  inline size_t CompactSampleConst() const { return 10; }
   
   size_t level0_compaction_size_ = 16;
   inline size_t Level0CompactionSize() const { return level0_compaction_size_; }
@@ -156,10 +157,10 @@ struct SBSOptions : public SBSNodeOptions, public StatisticsOptions {
 
 struct CompactionOptions {
   static const size_t PageConst = 4096;
-  static const size_t OutputFileMinConst = 2;
+  static const size_t OutputFileMinConst = 4;
   CompactionOptions(const SBSOptions& options, sagitrs::SamplerTable* table = nullptr)
     : table_(table), 
-      sample_per_file_(options.MaxFileSize() / options.WriteSampleConst() / PageConst),
+      sample_per_file_(options.MaxFileSize() / options.CompactSampleConst() / PageConst),
       sample_per_output_file_(sample_per_file_ / OutputFileMinConst),
       force_pick_(true) {}
   sagitrs::SamplerTable* table_;

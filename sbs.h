@@ -115,6 +115,7 @@ struct SBSkiplist {
           Coordinates mid = current; 
           current = suspect;
           suspect = mid;
+          iter->SeekNode(current);
         }
         //suspect shall be current's parent.
         iter->Float();
@@ -224,22 +225,23 @@ struct SBSkiplist {
     size_t prev = 0;
     Coordinates prev_coord(st);
     for (Coordinates c = st; c.Valid() && !(c == ed); c.JumpNext()) {
-      auto& l0buffer = c.node_->GetLevel(0)->buffer_;
-      if (l0buffer.size() == 0) continue;
-      auto l0file = l0buffer.at(0);
+      auto guard = c.node_->Pacesetter();
+      //if (l0buffer.size() == 0) continue;
+      //auto l0file = l0buffer.at(0);
       //auto pacesster
-        Slice min_key(l0file->Min());
-        int curr = table ? table->GetCountSmallerOrEqualThan(min_key) : 0;
-        if (!(c == st)) { 
-          int size = curr - prev;
-          shards.emplace_back(prev_coord, l0file, size);
-        }
+      Slice min_key(guard ? guard->Min() : Slice(""));
+      int curr = table ? table->GetCountSmallerOrEqualThan(min_key) : 0;
+      if (!(c == st)) { 
+        int size = curr - prev;
+        shards.emplace_back(prev_coord, guard, size);
+      }
       prev_coord = c;  
     }
     BFile* last_file = nullptr;
     if (ed.Valid()) {
-      auto& l0buffer = ed.node_->GetLevel(0)->buffer_;
-      last_file = l0buffer.at(0);
+      last_file = ed.node_->Pacesetter();
+      //auto& l0buffer = ed.node_->GetLevel(0)->buffer_;
+      //last_file = l0buffer.at(0);
     } else {
       auto iter = NewIterator();
       iter->SeekToLast(0);
@@ -255,24 +257,29 @@ struct SBSkiplist {
     }
   }
 
-  void PickGuard(const CompactionOptions& options, BFileVec& guards, 
+  bool PickGuard(const CompactionOptions& options, BFileVec& guards, 
                  sagitrs::Coordinates parent, bool force_pick) {
     std::vector<Shard> shards;
+    bool guard_picked = false;
     PickShard(shards, parent, options.table_);
     for (size_t i = 0; i < shards.size(); ++i) {
       Shard& tree = shards[i];
       bool out_of_size = tree.sample_covers_ >= options.sample_per_output_file_;
       bool divable = parent.height_ >= 3;
       if (force_pick || out_of_size) {
-        tree.picked_ = 1;
+        if (i > 0)
+          tree.picked_ = 1;
         if (i + 1 < shards.size())
           shards[i+1].picked_ = 1;
       }
-      if (tree.picked_)
-        guards.push_back(tree.guard_file_);
       if (out_of_size && divable)
         PickGuard(options, guards, tree.coord_, false);
+      if (tree.picked_ && tree.guard_file_) {
+        guards.push_back(tree.guard_file_);
+        guard_picked = 1;
+      }
     }
+    return guard_picked;
   }
   
   SBSIterator* NewScoreIterator(Scorer& scorer, double baseline, double& score) {
@@ -430,6 +437,33 @@ struct SBSkiplist {
     os << "----------Print Simple End----------" << std::endl;
     delete iter;
   }
+  void PrintSmallFileSimple(std::ostream& os) const {
+    auto iter = NewIterator();
+    std::vector<std::vector<size_t>> map;
+    size_t maxh = 0;
+    os << "----------Print Small File----------" << std::endl;
+    for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
+      auto height = iter->Current().node_->Height();
+      std::vector<size_t> height_state;
+      for (size_t i = 0; i < height; ++i)
+        height_state.push_back(iter->Current().node_->GetLevel(i)->buffer_.SmallFileSize());
+      map.push_back(height_state);
+      if (height > maxh) maxh = height;
+    }
+    for (int h = maxh - 1; h >= 0; --h) {
+      for (size_t i = 0; i < map.size(); ++i) {
+        if (map[i].size() > h) {
+          size_t x = map[i][h];
+          char ch = (x < 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
+          os << ch;
+        } else 
+          os << ' ';
+      }
+      os << std::endl;
+    }
+    os << "----------Print Small File End----------" << std::endl;
+    delete iter;
+  }
   void PrintStatistics(std::ostream& os) const {
     os << "----------Print Statistics Begin----------" << std::endl;
     Delineator d;
@@ -456,6 +490,7 @@ struct SBSkiplist {
     std::stringstream ss;
   #if defined(MINIMUM_BVERSION_PRINT)
     PrintSimple(ss);
+    PrintSmallFileSimple(ss);
   #else
     PrintList(ss);
     //PrintStatistics(ss);
