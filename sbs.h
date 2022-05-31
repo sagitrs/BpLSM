@@ -236,6 +236,7 @@ struct SBSkiplist {
         int size = curr - prev;
         shards.emplace_back(prev_coord, prev_guard, size);
       }
+      prev = curr;
       prev_coord = c;  
       prev_guard = guard;
     }
@@ -266,7 +267,8 @@ struct SBSkiplist {
     PickShard(shards, parent, options.table_);
     for (size_t i = 0; i < shards.size(); ++i) {
       Shard& tree = shards[i];
-      bool out_of_size = tree.sample_covers_ >= options.SamplePerOutputFile();
+      size_t limit = options.SamplePerOutputFile();
+      bool out_of_size = tree.sample_covers_ >= limit;
       bool divable = parent.height_ >= 3;
       if (force_pick || out_of_size) {
         if (i > 0)
