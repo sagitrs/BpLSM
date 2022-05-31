@@ -164,6 +164,7 @@ struct SBSOptions : public SBSNodeOptions,
   static const size_t OutputFileMinConst = 4;
   size_t SamplePerInputFile() const { return MaxFileSize() / CompactSampleConst() / PageConst; }
   size_t SamplePerOutputFile() const { return SamplePerInputFile() / OutputFileMinConst; }
+  size_t OutputFileMinSize() const { return MaxFileSize() / OutputFileMinConst / 2; }
   //size_t sample_per_file_ = max_file / options.CompactSampleConst() / PageConst
   //size_t sample_per_output_file_;
   bool force_pick_ = 1;

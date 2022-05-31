@@ -416,12 +416,12 @@ struct SBSkiplist {
     auto iter = NewIterator();
     std::vector<std::vector<size_t>> map;
     size_t maxh = 0;
-    os << "----------Print Simple Begin----------" << std::endl;
+    os << "----------Print Hole Begin----------" << std::endl;
     for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
       auto height = iter->Current().node_->Height();
       std::vector<size_t> height_state;
       for (size_t i = 0; i < height; ++i)
-        height_state.push_back(iter->Current().node_->GetLevel(i)->buffer_.size());
+        height_state.push_back(iter->Current().node_->GetLevel(i)->buffer_.HoleSize());
       map.push_back(height_state);
       if (height > maxh) maxh = height;
     }
@@ -436,19 +436,19 @@ struct SBSkiplist {
       }
       os << std::endl;
     }
-    os << "----------Print Simple End----------" << std::endl;
+    os << "----------Print Hole End----------" << std::endl;
     delete iter;
   }
   void PrintSmallFileSimple(std::ostream& os) const {
     auto iter = NewIterator();
     std::vector<std::vector<size_t>> map;
     size_t maxh = 0;
-    os << "----------Print Small File----------" << std::endl;
+    os << "----------Print Tape File----------" << std::endl;
     for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
       auto height = iter->Current().node_->Height();
       std::vector<size_t> height_state;
       for (size_t i = 0; i < height; ++i)
-        height_state.push_back(iter->Current().node_->GetLevel(i)->buffer_.SmallFileSize());
+        height_state.push_back(iter->Current().node_->GetLevel(i)->buffer_.TapeSize());
       map.push_back(height_state);
       if (height > maxh) maxh = height;
     }
@@ -463,7 +463,7 @@ struct SBSkiplist {
       }
       os << std::endl;
     }
-    os << "----------Print Small File End----------" << std::endl;
+    os << "----------Print Tape File End----------" << std::endl;
     delete iter;
   }
   void PrintStatistics(std::ostream& os) const {

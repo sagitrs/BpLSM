@@ -235,7 +235,7 @@ struct SubSBS {
       for (auto file : files) {
         size_t size = file->Data()->file_size;
         bool dive = false;
-        if (size * 2 >= Options().SamplePerOutputFile()) {
+        if (size  >= Options().OutputFileMinSize()) {
           file->SetType(BFile::TypeHole);
           dive = TreePut(file, head_, height_);
         } else 

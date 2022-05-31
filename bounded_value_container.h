@@ -161,11 +161,18 @@ struct BFileVec : public BFileVecBase,
     return total;
   }
   size_t HoleSize() const {
-    size_t hole = 0;
+    size_t total = 0;
     for (BFile* file : *this)
       if (file->Type() == BFile::TypeHole)
-        hole ++;
-    return hole;
+        total ++;
+    return total;
+  }
+  size_t TapeSize() const {
+    size_t total = 0;
+    for (BFile* file : *this)
+      if (file->Type() == BFile::TypeTape)
+        total ++;
+    return total;
   }
  private:
   const BFileVecBase::const_iterator Locate(uint64_t id) const {
