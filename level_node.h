@@ -15,8 +15,9 @@ struct SBSNode;
 typedef BFileVec TypeBuffer;
 
 enum TableVariableName : uint32_t {
+  TableVariableMin = 0,
   // stats.
-  LocalGet = 1,
+  LocalGet,
   LocalWrite,
   LocalIterate,
   LocalLeaf,
@@ -94,6 +95,23 @@ struct LevelNode : public Printable {
       if (hottest_) {
         set.emplace_back("UTime", std::to_string(update_time_));
         set.emplace_back("KSGet", std::to_string(hottest_->GetStatistics(KSGetCount, update_time_)));
+      }
+      {
+        set.emplace_back("\nStatsInfo", "\n");
+        set.emplace_back("Get", std::to_string(at(LocalGet)));
+        set.emplace_back("Put", std::to_string(at(LocalWrite)));
+        set.emplace_back("Iter", std::to_string(at(LocalIterate)));
+        set.emplace_back("\nFileInfo", "\n");
+        set.emplace_back("TapeSize", std::to_string(at(TapeFileSize) >> 20) + "MB");
+        set.emplace_back("HoleSize", std::to_string(at(HoleFileSize) >> 20) + "MB");
+        set.emplace_back("TapeRuns", std::to_string(at(TapeFileRuns)));
+        set.emplace_back("HoleFiles", std::to_string(at(HoleFileCount)));
+        set.emplace_back("\nScoreInfo", "\n");
+        set.emplace_back("SizeS", std::to_string(at(FileSizeScore)));
+        set.emplace_back("RunS", std::to_string(at(FileRunScore)));
+        set.emplace_back("NumS", std::to_string(at(FileNumScore)));
+        set.emplace_back("DynamicS", std::to_string(at(FileDynamicScore)));
+        set.emplace_back("WidthS", std::to_string(at(NodeWidthScore)));
       }
     }
   };
