@@ -638,9 +638,9 @@ struct SBSIterator : public Printable {
     table[FileNumScore]  = 100ULL * table[HoleFileCount] / options.MaxCompactionFiles();
     table[FileDynamicScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / 8;
     
-    int emit = 0 + width - options.MaxWidth() / 2;
+    int emit = 0 + width - options.MaxWidth();
     if (emit < 0) emit = 0;
-    table[NodeWidthScore] = 100ULL * emit / options.MaxWidth();
+    table[NodeWidthScore] = 100ULL * emit / options.MaxWidth() * 2;
   }
   void UpdateAllTable() {
     Statistable::TypeTime now = head_->options_.NowTimeSlice();

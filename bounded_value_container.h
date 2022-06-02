@@ -142,7 +142,7 @@ struct BFileVec : public BFileVecBase,
   }
   size_t GetValueWidth(const Bounded& range) const {
     Slice a(range.Min()), b(range.Max());
-    size_t width = 1;
+    size_t width = 0;
     for (auto & child : *this)
       if (range.Include(*child) == BInclude)
         width ++;
