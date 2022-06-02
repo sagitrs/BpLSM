@@ -37,6 +37,9 @@ enum TableVariableName : uint32_t {
   FileNumScore,
   FileDynamicScore,
   NodeWidthScore,
+  // important args.
+  HoleFileCapacity,
+  MinHoleFileSize,
 
   TableVariableMax,
 };
@@ -97,6 +100,9 @@ struct LevelNode : public Printable {
         set.emplace_back("KSGet", std::to_string(hottest_->GetStatistics(KSGetCount, update_time_)));
       }
       {
+        set.emplace_back("\nCoreArgs", "\n");
+        set.emplace_back("HoleFileCapacity", std::to_string(at(HoleFileCapacity)));
+        set.emplace_back("MinHoleFileSize", std::to_string(at(MinHoleFileSize)));
         set.emplace_back("\nStatsInfo", "\n");
         set.emplace_back("Get", std::to_string(at(LocalGet)));
         set.emplace_back("Put", std::to_string(at(LocalWrite)));

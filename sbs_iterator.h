@@ -632,11 +632,14 @@ struct SBSIterator : public Printable {
     table[TotalFileCount] = table[HoleFileCount] + table[TapeFileCount];
     table[TotalFileSize]  = table[HoleFileSize]  + table[TapeFileSize];
     table[TotalFileRuns]  = table[HoleFileRuns]  + table[TapeFileRuns];
+
+    table[HoleFileCapacity] = 8;
+    table[MinHoleFileSize] = options.OutputFileMinSize(); 
     
     table[FileSizeScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / options.MaxCompactionFiles();
     table[FileRunScore]  = 100ULL * table[HoleFileRuns] / width / options.MaxCompactionFiles();
     table[FileNumScore]  = 100ULL * table[HoleFileCount] / options.MaxCompactionFiles();
-    table[FileDynamicScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / 8;
+    table[FileDynamicScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / table[HoleFileCapacity];
     
     int emit = 0 + width - options.MaxWidth();
     if (emit < 0) emit = 0;
