@@ -16,7 +16,7 @@ typedef BFileVec TypeBuffer;
 
 enum TableVariableName : uint32_t {
   // stats.
-  LocalGet,
+  LocalGet = 1,
   LocalWrite,
   LocalIterate,
   LocalLeaf,
@@ -31,7 +31,7 @@ enum TableVariableName : uint32_t {
   TapeFileRuns,
   TotalFileRuns,
   // scores.
-  FileSizeScore = 1,
+  FileSizeScore,
   FileRunScore,
   FileNumScore,
   FileDynamicScore,

@@ -99,6 +99,7 @@ struct Scorer {
     node_->GetChildGuard(height_, children);
   }
   const Bounded& Range() const { return node_->GetLevel(height_)->buffer_; }
+  LevelNode::VariableTable& VTable() const { return node_->GetLevel(height_)->table_; }
 };
 
 }

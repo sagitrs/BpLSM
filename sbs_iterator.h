@@ -637,6 +637,18 @@ struct SBSIterator : public Printable {
     table[FileRunScore]  = 100ULL * table[HoleFileRuns] / width / options.MaxCompactionFiles();
     table[FileNumScore]  = 100ULL * table[HoleFileCount] / options.MaxCompactionFiles();
     table[FileDynamicScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / 8;
+    
+    int emit = 0 + width - options.MaxWidth() / 2;
+    if (emit < 0) emit = 0;
+    table[NodeWidthScore] = 100ULL * emit / options.MaxWidth();
+  }
+  void UpdateAllTable() {
+    Statistable::TypeTime now = head_->options_.NowTimeSlice();
+    for (int height = SBSHeight() - 1; height > 0; --height) {
+      SeekToRoot();
+      for (Dive(SBSHeight() - 1 - height); Valid(); Next()) 
+        UpdateTable(now);
+    }
   }
 };
 

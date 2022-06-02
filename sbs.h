@@ -289,6 +289,7 @@ struct SBSkiplist {
   SBSIterator* NewScoreIterator(Scorer& scorer, double baseline, double& score) {
     SBSIterator* iter = NewIterator();
     iter->SeekToRoot();
+    iter->UpdateAllTable();
     score = iter->SeekScore(scorer, baseline, baseline != 0);
     if (scorer.isUpdated()) {
       return iter;
