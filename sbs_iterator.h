@@ -633,9 +633,15 @@ struct SBSIterator : public Printable {
     table[TotalFileSize]  = table[HoleFileSize]  + table[TapeFileSize];
     table[TotalFileRuns]  = table[HoleFileRuns]  + table[TapeFileRuns];
 
-    table[HoleFileCapacity] = 8;
-    table[MinHoleFileSize] = options.OutputFileMinSize(); 
-    
+    {
+      double total = (100 + table[LocalWrite] + table[LocalGet] / 5 + table[LocalIterate] * 100);
+      double WWeight = (100 + table[LocalWrite]) / total;
+      if (height >= 3)
+        table[HoleFileCapacity] = 8;
+      else
+        table[HoleFileCapacity] = 2 + 6 * WWeight;
+      table[MinHoleFileSize] = options.MaxFileSize() / 2; 
+    }
     table[FileSizeScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / options.MaxCompactionFiles();
     table[FileRunScore]  = 100ULL * table[HoleFileRuns] / width / options.MaxCompactionFiles();
     table[FileNumScore]  = 100ULL * table[HoleFileCount] / options.MaxCompactionFiles();
@@ -643,6 +649,7 @@ struct SBSIterator : public Printable {
     
     int emit = 0 + width - options.MaxWidth();
     if (emit < 0) emit = 0;
+    
     table[NodeWidthScore] = 100ULL * emit / options.MaxWidth() * 2;
   }
   void UpdateAllTable() {
