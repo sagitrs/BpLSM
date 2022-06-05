@@ -2,7 +2,11 @@
 
 #include "bounded.h"
 #include "statistics.h"
+#include "leveldb/options.h"
 #include "../../db/version_edit.h"
+#include "../../db/version_set.h"
+#include "leveldb/iterator.h"
+
 namespace sagitrs {
 
 struct BFile : virtual public Bounded, virtual public Identifiable, 
@@ -49,6 +53,8 @@ struct BFile : virtual public Bounded, virtual public Identifiable,
     snapshot.emplace_back("NUM", std::to_string(Identifier()));
     Statistics::GetStringSnapshot(snapshot);
   }
+
+  leveldb::Iterator* NewIterator(const leveldb::ReadOptions& roptions, leveldb::Version* version);
 };
 
 }

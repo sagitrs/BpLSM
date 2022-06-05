@@ -155,7 +155,7 @@ struct SBSOptions : public SBSNodeOptions,
   inline size_t WriteSampleConst() const { return 100; }
   inline size_t CompactSampleConst() const { return 10; }
   
-  size_t level0_compaction_size_ = 16;
+  size_t level0_compaction_size_ = 8;
   inline size_t Level0CompactionSize() const { return level0_compaction_size_; }
   inline size_t Level0SlowDownSize() const { return level0_compaction_size_ * 3 / 2; }
   inline size_t Level0StopSize() const { return level0_compaction_size_ * 2; }
