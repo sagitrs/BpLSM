@@ -52,7 +52,12 @@ struct BFileVecIterator : public BaseIter {
     }
   }
  private:
-  Handle* F(size_t k) const { return handles_.at(forward_[k]); }
+  const Handle* F(size_t k) const { 
+    assert(k < forward_.size());
+    auto p = handles_.find(forward_[k]);
+    assert(p != handles_.end());
+    return p->second; 
+  }
   Slice FMin(size_t k) const { return F(k)->file_->Min(); }
   Slice FMax(size_t k) const { return F(k)->file_->Max(); }
   void Open(Handle* handle, bool echo = true) {
