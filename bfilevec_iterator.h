@@ -107,11 +107,6 @@ struct BFileVecIterator : public BaseIter {
       return p->second.Valid();
     }
   }
-  void SubIterateCount(uint64_t id, uint64_t time) {
-    auto p = handles_.find(id);
-    assert(p != handles_.end());
-    p->second->file_->UpdateStatistics(KSIterateCount, 1, time);
-  }
   
   virtual void SeekToFirst() override { 
     if (N() == 0) return;

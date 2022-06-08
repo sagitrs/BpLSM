@@ -52,12 +52,12 @@ struct Sampler {
   };
   
   SamplerOptions options_;
-  SamplerTable read_sampler_, write_sampler_;//, global_sampler_;
+  SamplerTable read_sampler_, write_sampler_, iterate_sampler_;
   std::atomic<uint64_t> memory_usage_, record_count_;
  public:
   Sampler() : 
     options_(),
-    write_sampler_(), read_sampler_(),
+    write_sampler_(), read_sampler_(), iterate_sampler_(),
     memory_usage_(0), record_count_(0)
   {}
   ~Sampler() {}
@@ -68,8 +68,10 @@ struct Sampler {
     //global_sampler_.Add(key);
   }
   void ReadSample(const Slice& key) { read_sampler_.Add(key); }
+  void IterateSample(const Slice& key) { iterate_sampler_.Add(key); }
   SamplerTable& WriteTable() { return write_sampler_; }
   SamplerTable& ReadTable() { return read_sampler_; }
+  SamplerTable& IterateTable() { return iterate_sampler_; }
   //SamplerTable& GlobalTable() { return global_sampler_; }
   //void GlobalClear() {
   //  uint64_t l = record_size_.load(std::memory_order_relaxed);

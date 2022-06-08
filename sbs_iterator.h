@@ -606,7 +606,9 @@ struct SBSIterator : public Printable {
     delete iter;
   }
 
-  void UpdateTable(Statistable::TypeTime now, const LevelNode::VariableTable* gtable = nullptr) {
+  void UpdateTable(Statistable::TypeTime now, 
+                   const LevelNode::VariableTable* gtable = nullptr,
+                   std::vector<std::pair<Coordinates, double>>* market = nullptr) {
     size_t height = Current().height_;
     BFileVec& buffer = Current().Buffer();
     if (height == 0) return;
@@ -647,27 +649,32 @@ struct SBSIterator : public Printable {
     table[TotalFileSize]  = table[HoleFileSize]  + table[TapeFileSize];
     table[TotalFileRuns]  = table[HoleFileRuns]  + table[TapeFileRuns];
 
-    {
+    table[MinHoleFileSize] = options.MaxFileSize() / 2;
+    if (market) {
       //double WWeight = (100.0 + table[LocalWrite]) / (100.0 + 1.0 * table[LocalWrite] + 0.2 * table[LocalGet] + 10000.0 * table[LocalIterate]);
-      table[HoleFileCapacity] = 8;
-      table[MinHoleFileSize] = options.MaxFileSize() / 2;
+      table[HoleFileCapacity] = 1;  
+      if (table[WritePercent]) {
+        double alpha = 0.5;
+        double cost[options.MaxWidth() + 2];
+        double write = table[WritePercent] ? (100.0 / table[WritePercent]) : 0;
+        double get = table[GetPercent] ? (100.0 / table[GetPercent]) : 0;
+        double iter = table[IteratePercent] ? (100.0 / table[IteratePercent]) : 0;
+        double B = 4096;
+        double p = 0.001;
       
-      double alpha = 0.5;
-      double cost[options.MaxWidth() + 2];
-      double write = table[WritePercent] ? (100.0 / table[WritePercent]) : 0;
-      double get = table[GetPercent] ? (100.0 / table[GetPercent]) : 0;
-      double iter = table[IteratePercent] ? (100.0 / table[IteratePercent]) : 0;
-      double B = 4096;
-      double p = 0.001;
-    
-      for (size_t i = 1; i <= options.MaxWidth(); ++i) 
-        cost[i] = (2 * (i + alpha * options.DefaultWidth()) * write) + B * (p * get + iter);
-      table[IOPF] = (cost[9] - cost[8]);
+        double base_wcost = 2 * 1 * alpha * width * write;
+        double base_rcost = B * (p * get + iter);
+        
+        for (size_t i = 2; i <= options.MaxWidth(); ++i)
+          market->emplace_back(Current(), base_wcost / i - base_rcost);
+      }
+    } else {
+      table[HoleFileCapacity] = 8;
     }
     table[FileSizeScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / options.MaxCompactionFiles();
     table[FileRunScore]  = 100ULL * table[HoleFileRuns] / width / options.MaxCompactionFiles();
     table[FileNumScore]  = 100ULL * table[HoleFileCount] / options.MaxCompactionFiles();
-    table[FileDynamicScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / table[HoleFileCapacity];
+    //table[FileDynamicScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / table[HoleFileCapacity];
     
     int emit = 0 + width - options.MaxWidth();
     if (emit < 0) emit = 0;
@@ -678,12 +685,22 @@ struct SBSIterator : public Printable {
     Statistable::TypeTime now = head_->options_.NowTimeSlice();
     SeekToRoot();
     LevelNode::VariableTable& gtable = Current().Table();
+    std::vector<std::pair<Coordinates, double>> market;
     UpdateTable(now);
     for (int height = SBSHeight() - 1; height > 0; --height) {
       SeekToRoot();
       for (Dive(SBSHeight() - 1 - height); Valid(); Next()) 
-        UpdateTable(now, &gtable);
+        UpdateTable(now, &gtable, &market);
     }
+    std::sort(market.begin(), market.end(), 
+      [](std::pair<Coordinates, double>& a, std::pair<Coordinates, double> b) {
+        return a.second > b.second;});
+    size_t data_size = gtable[LocalLeaf] > 1000 ? gtable[LocalLeaf] : 1000;
+    double capacity = 1.0 * data_size * head_->options_.SpaceAmplificationConst();
+    if (capacity > market.size()) capacity = market.size();
+    size_t cap = capacity;
+    for (size_t i = 0; i < cap; ++i)
+      market[i].first.Table()[HoleFileCapacity] ++;
   }
 };
 

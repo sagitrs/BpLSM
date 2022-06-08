@@ -444,6 +444,33 @@ struct SBSkiplist {
     os << "----------Print Hole End----------" << std::endl;
     delete iter;
   }
+  void PrintCapacitySimple(std::ostream& os) const {
+    auto iter = NewIterator();
+    std::vector<std::vector<size_t>> map;
+    size_t maxh = 0;
+    os << "---------- Print Max Run ----------" << std::endl;
+    for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
+      auto height = iter->Current().node_->Height();
+      std::vector<size_t> height_state;
+      for (size_t i = 0; i < height; ++i)
+        height_state.push_back(iter->Current().node_->GetLevel(i)->table_[HoleFileCapacity]);
+      map.push_back(height_state);
+      if (height > maxh) maxh = height;
+    }
+    for (int h = maxh - 1; h >= 0; --h) {
+      for (size_t i = 0; i < map.size(); ++i) {
+        if (map[i].size() > h) {
+          size_t x = map[i][h];
+          char ch = (x < 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
+          os << ch;
+        } else 
+          os << ' ';
+      }
+      os << std::endl;
+    }
+    os << "----------Print Tape File End----------" << std::endl;
+    delete iter;
+  }
   void PrintSmallFileSimple(std::ostream& os) const {
     auto iter = NewIterator();
     std::vector<std::vector<size_t>> map;
@@ -498,6 +525,7 @@ struct SBSkiplist {
   #if defined(MINIMUM_BVERSION_PRINT)
     PrintSimple(ss);
     PrintSmallFileSimple(ss);
+    PrintCapacitySimple(ss);
   #else
     PrintList(ss);
     //PrintStatistics(ss);

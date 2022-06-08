@@ -1,8 +1,8 @@
 #pragma once
 #include <mutex>
 #include <shared_mutex>
-//#define LOCK_TYPE_MUTEX
-#define LOCK_TYPE_PTHREAD_RWLOCK
+#define LOCK_TYPE_MUTEX
+//#define LOCK_TYPE_PTHREAD_RWLOCK
 //#define LOCK_TYPE_SHARED_MUTEX
 
 namespace sagitrs {
