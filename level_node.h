@@ -21,6 +21,10 @@ enum TableVariableName : uint32_t {
   LocalWrite,
   LocalIterate,
   LocalLeaf,
+  GetPercent,
+  WritePercent,
+  IteratePercent,
+  SpacePercent,
   // files.
   HoleFileSize,
   TapeFileSize,
@@ -32,6 +36,7 @@ enum TableVariableName : uint32_t {
   TapeFileRuns,
   TotalFileRuns,
   // scores.
+  IOPF,
   FileSizeScore,
   FileRunScore,
   FileNumScore,

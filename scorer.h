@@ -9,36 +9,27 @@ struct Scorer {
  private:
   struct GlobalStatus {
     size_t head_height_;
-    Statistics* global_stats_;
+    const Statistics* global_stats_;
     Statistable::TypeTime time_;
-    GlobalStatus(SBSNode* head) {
+    GlobalStatus(SBSNode* head) : 
+     head_height_(head->Height()),
+     global_stats_(head->GetTreeStatistics(head_height_ - 1)),
+     time_(head->options_.NowTimeSlice()) {
       assert(head->is_head_);
-      head_height_ = head->Height();
-      auto head_stats = head->GetTreeStatistics(head_height_ - 1);
-      global_stats_ = head_stats ? new Statistics(*head_stats) : nullptr;
-      time_ = head->options_.NowTimeSlice();
     }
-    ~GlobalStatus() { 
-      if (global_stats_)
-        delete global_stats_;
-    }
+    ~GlobalStatus() {}
   };
-  GlobalStatus* status_;
+  GlobalStatus status_;
   bool is_updated_;
   double max_score_;
 
   SBSNode* node_;
   size_t height_;
  public:
-  Scorer() 
-  : status_(nullptr), is_updated_(false), max_score_(0), 
+  Scorer(SBSNode* head) 
+  : status_(head), is_updated_(false), max_score_(0), 
     node_(nullptr), height_(0) {}
-  virtual void Init(SBSNode* head) { 
-    status_ = new GlobalStatus(head); 
-  }
-  ~Scorer() {
-    if (status_) delete status_;
-  }
+  ~Scorer() {}
   virtual void Reset(double baseline) { 
     is_updated_ = 0;
     max_score_ = baseline;
@@ -73,7 +64,7 @@ struct Scorer {
     return score / Capacity();
   }
  // resources can be used.
- protected:
+ public:
   void SetNode(SBSNode* node, size_t height) { node_ = node; height_ = height; }
   size_t Height() const { return height_; }
   size_t Width(size_t depth = 1) const { 
@@ -87,7 +78,10 @@ struct Scorer {
     SBSNode* next = node_->GetLevel(height_)->next_.load(std::memory_order_relaxed);
     return next == nullptr;
   }
-  const GlobalStatus& Global() const { return *status_; }
+  
+  const GlobalStatus& Global() const { return status_; }
+  const Statistics* GlobalStatistics() const { return status_.global_stats_; }
+
   const Statistics& GetStatistics() { 
     return *node_->GetTreeStatistics(height_); 
   }

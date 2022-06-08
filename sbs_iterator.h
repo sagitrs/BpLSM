@@ -339,7 +339,6 @@ struct SBSIterator : public Printable {
   // This may recursively trigger a split operation.
   // Assert: Already SeekRange().
   double SeekScore(Scorer& scorer, double baseline, bool optimal) {
-    scorer.Init(head_);
     scorer.Reset(baseline);
     CoordinatesStack max_stack(s_);
     
@@ -359,7 +358,6 @@ struct SBSIterator : public Printable {
     return scorer.MaxScore();
   }
   double SeekScoreInHeight(int height, Scorer& scorer, double baseline, bool optimal) {
-    scorer.Init(head_);
     scorer.Reset(baseline);
     CoordinatesStack max_stack(s_);
     
@@ -433,6 +431,15 @@ struct SBSIterator : public Printable {
     auto iter = s_.NewIterator();
     for (iter->SeekToLast(); iter->Valid(); iter->Prev())
       iter->Current().GetCovers(results, key);
+    delete iter;
+  }
+  void GetBufferOnRoute(std::vector<BFile*>& results) const {
+    auto iter = s_.NewIterator();
+    for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+      BFileVec& buffer = iter->Current().Buffer();
+      for (BFile* file : buffer) 
+        results.push_back(file);
+    }
     delete iter;
   }
   
@@ -599,7 +606,7 @@ struct SBSIterator : public Printable {
     delete iter;
   }
 
-  void UpdateTable(Statistable::TypeTime now) {
+  void UpdateTable(Statistable::TypeTime now, const LevelNode::VariableTable* gtable = nullptr) {
     size_t height = Current().height_;
     BFileVec& buffer = Current().Buffer();
     if (height == 0) return;
@@ -615,7 +622,14 @@ struct SBSIterator : public Printable {
     table[LocalWrite]   = stats->GetStatistics(KSPutCount, now - 1) / time;
     table[LocalIterate] = stats->GetStatistics(KSIterateCount, now - 1) / time;
     table[LocalLeaf]    = stats->GetStatistics(LeafCount, -1);
-    
+
+    if (gtable) {
+      table[GetPercent] = table[LocalGet] == 0 ? 0 : 100ULL * (*gtable)[LocalGet] / table[LocalGet];
+      table[WritePercent] = table[LocalWrite] == 0 ? 0 : 100ULL * (*gtable)[LocalWrite] / table[LocalWrite];
+      table[IteratePercent] = table[LocalIterate] == 0 ? 0 : 100ULL * (*gtable)[LocalIterate] / table[LocalIterate];
+      table[SpacePercent] = table[LocalLeaf] == 0 ? 0 : 100ULL * (*gtable)[LocalLeaf] / table[LocalLeaf];
+    }
+
     BFileVec children;
     Current().node_->GetChildGuard(height, &children);
     for (BFile* file : buffer) {
@@ -634,9 +648,21 @@ struct SBSIterator : public Printable {
     table[TotalFileRuns]  = table[HoleFileRuns]  + table[TapeFileRuns];
 
     {
-      double WWeight = (100.0 + table[LocalWrite]) / (100.0 + 1.0 * table[LocalWrite] + 0.2 * table[LocalGet] + 10000.0 * table[LocalIterate]);
-      table[HoleFileCapacity] = 1 + 7 * WWeight;
-      table[MinHoleFileSize] = options.MaxFileSize() / 2; 
+      //double WWeight = (100.0 + table[LocalWrite]) / (100.0 + 1.0 * table[LocalWrite] + 0.2 * table[LocalGet] + 10000.0 * table[LocalIterate]);
+      table[HoleFileCapacity] = 8;
+      table[MinHoleFileSize] = options.MaxFileSize() / 2;
+      
+      double alpha = 0.5;
+      double cost[options.MaxWidth() + 2];
+      double write = table[WritePercent] ? (100.0 / table[WritePercent]) : 0;
+      double get = table[GetPercent] ? (100.0 / table[GetPercent]) : 0;
+      double iter = table[IteratePercent] ? (100.0 / table[IteratePercent]) : 0;
+      double B = 4096;
+      double p = 0.001;
+    
+      for (size_t i = 1; i <= options.MaxWidth(); ++i) 
+        cost[i] = (2 * (i + alpha * options.DefaultWidth()) * write) + B * (p * get + iter);
+      table[IOPF] = (cost[9] - cost[8]);
     }
     table[FileSizeScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / options.MaxCompactionFiles();
     table[FileRunScore]  = 100ULL * table[HoleFileRuns] / width / options.MaxCompactionFiles();
@@ -650,10 +676,13 @@ struct SBSIterator : public Printable {
   }
   void UpdateAllTable() {
     Statistable::TypeTime now = head_->options_.NowTimeSlice();
+    SeekToRoot();
+    LevelNode::VariableTable& gtable = Current().Table();
+    UpdateTable(now);
     for (int height = SBSHeight() - 1; height > 0; --height) {
       SeekToRoot();
       for (Dive(SBSHeight() - 1 - height); Valid(); Next()) 
-        UpdateTable(now);
+        UpdateTable(now, &gtable);
     }
   }
 };

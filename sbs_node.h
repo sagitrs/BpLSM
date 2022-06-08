@@ -243,6 +243,7 @@ struct SBSNode : public Printable {
     
     return h;
   }
+ public:
   const Statistics* GetTreeStatistics(size_t height) {
     if (height == 0) {
       auto& buffer = GetLevel(0)->buffer_;
@@ -272,8 +273,6 @@ struct SBSNode : public Printable {
     GetLevel(height)->table_.SetDirty(false);
     return s;
   }
- private:
- public:
   bool SplitNext(const SBSOptions& options, size_t height, BFileVec* force = nullptr) {
     if (height == 0) {
       auto &a = GetLevel(0)->buffer_;
