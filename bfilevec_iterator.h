@@ -123,6 +123,51 @@ struct BFileVecIterator : public BaseIter {
     // unfinished.
     assert(false);
   }
+  bool OpenOneGE(const Slice& lbound, bool echo) {
+    //assert(forward_curr_ < forward_.size());
+    // no file covers this key, but a result may be needed.
+    size_t opened = 0;
+    std::string minkey = FMin(forward_curr_).ToString();
+    size_t tail;
+    for (tail = forward_curr_ + 1; tail < forward_.size(); ++tail) {
+      int cmp = FMin(tail).compare(minkey);
+      if (cmp == 0) continue;
+      if (cmp < 0) assert(false);
+      break;
+    }
+    for (size_t i = forward_curr_; i < tail; ++i) {
+      if (!F(i)->isOpened())
+        Open(F(i), echo);
+      opened ++;
+    }
+    return opened > 0;
+  }
+  bool OpenOneIN(const Slice& lbound, const Slice& rbound, bool echo) {
+    //assert(forward_curr_ < forward_.size());
+    // no file covers this key, but a result may be needed.
+    size_t opened = 0;
+    for (size_t i = forward_curr_; i < forward_.size(); ++i) {
+      bool lfit = FMin(i).compare(lbound) >= 0;
+      bool rfit = FMin(i).compare(rbound) <= 0;
+      assert(lfit);
+      if (!rfit) {
+        // this file shouldn't be open now.
+        return 0;
+      }
+      auto h = F(i);
+      if (!h->isOpened())
+        Open(F(i), echo);
+      for (size_t j = i + 1; j < forward_.size(); ++j) {
+        int cmp = FMin(j).compare(FMin(i));
+        assert(cmp >= 0);
+        if (cmp > 0)
+          break;
+        Open(F(j), echo);
+      }
+      return 1;
+    }
+    return opened > 0;
+  }
   virtual void Seek(const Slice& ikey) override {
     //std::vector<Handle*> 
     Slice key(leveldb::ExtractUserKey(ikey));
@@ -148,33 +193,20 @@ struct BFileVecIterator : public BaseIter {
       assert(!Valid());
       return;
     }
-    // no file covers this key, but a result may be needed.
-    std::string minkey = FMin(forward_curr_).ToString();
-    size_t tail;
-    for (tail = forward_curr_ + 1; tail < forward_.size(); ++tail) {
-      int cmp = FMin(tail).compare(minkey);
-      if (cmp == 0) continue;
-      if (cmp < 0) assert(false);
-      break;
-    }
-    for (size_t i = forward_curr_; i < tail; ++i) {
-      if (!F(i)->isOpened())
-        Open(F(i), false);
-      opened ++;
-    }
+    OpenOneGE(key, false);
     BaseIter::Seek(key);
     assert(Valid());  
   }
   virtual void Next() override {
     BaseIter::Next();
     Slice key1(leveldb::ExtractUserKey(istat_.key_));
-    Slice key2(leveldb::ExtractUserKey(key()));
-    size_t opened = 0;
-    for (; forward_curr_ < N() && FMin(forward_curr_).compare(key2) <= 0; ++forward_curr_) {
-      Handle* h = F(forward_curr_);
-      if (!h->isOpened())
-        Open(h, true);
-      opened ++; 
+    bool open = false;
+    if (!Valid()) {
+      // current file is finished.
+      open = OpenOneGE(key1, true);
+    } else {
+      Slice key2(leveldb::ExtractUserKey(key()));
+      open = OpenOneIN(key1, key2, true);
     }
   }
   virtual void Prev() override {
