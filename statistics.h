@@ -177,7 +177,8 @@ struct Statistics : virtual public Printable {
                                 Statistable::TypeTime time) {
     if (time != STATISTICS_ALL) {
       UpdateTime(time);
-      queue_[time][label] += diff;
+      if (time >= queue_.st_time_)
+        queue_[time][label] += diff;
     }
     history_[label] += diff;
   }

@@ -107,6 +107,11 @@ struct BFileVecIterator : public BaseIter {
       return p->second.Valid();
     }
   }
+  void SubIterateCount(uint64_t id, uint64_t time) {
+    auto p = handles_.find(id);
+    assert(p != handles_.end());
+    p->second->file_->UpdateStatistics(KSIterateCount, 1, time);
+  }
   
   virtual void SeekToFirst() override { 
     if (N() == 0) return;
@@ -157,23 +162,30 @@ struct BFileVecIterator : public BaseIter {
       auto h = F(i);
       if (!h->isOpened())
         Open(F(i), echo);
+      //forward_curr_ = i;
       for (size_t j = i + 1; j < forward_.size(); ++j) {
         int cmp = FMin(j).compare(FMin(i));
         assert(cmp >= 0);
         if (cmp > 0)
           break;
-        Open(F(j), echo);
+        if (!F(j)->isOpened())
+          Open(F(j), echo);
+        //forward_curr_ = j;
       }
       return 1;
     }
     return opened > 0;
   }
+  void LocateForward(const Slice& key) {
+    for (; forward_curr_ < forward_.size(); ++forward_curr_)
+      if (FMin(forward_curr_).compare(key) >= 0)
+        break;
+  }
   virtual void Seek(const Slice& ikey) override {
     //std::vector<Handle*> 
     Slice key(leveldb::ExtractUserKey(ikey));
-    for (forward_curr_ = 0; forward_curr_ < forward_.size(); ++forward_curr_)
-      if (FMin(forward_curr_).compare(key) >= 0)
-        break;
+    forward_curr_ = 0;
+    LocateForward(key);
     size_t opened = 0;
     for (size_t i = 0; i < forward_curr_; ++i) {
       if (FMin(i).compare(key) <= 0 && FMax(i).compare(key) >= 0) {
@@ -207,6 +219,11 @@ struct BFileVecIterator : public BaseIter {
     } else {
       Slice key2(leveldb::ExtractUserKey(key()));
       open = OpenOneIN(key1, key2, true);
+    }
+    if (!Valid()) {
+      // reach the end. 
+    } else {
+      LocateForward(key());
     }
   }
   virtual void Prev() override {
