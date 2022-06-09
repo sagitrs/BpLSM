@@ -665,8 +665,11 @@ struct SBSIterator : public Printable {
         double base_wcost = 2 * 1 * alpha * width * write;
         double base_rcost = B * (p * get + iter);
         
-        for (size_t i = 2; i <= options.MaxWidth(); ++i)
-          market->emplace_back(Current(), base_wcost / i - base_rcost);
+        for (size_t i = 2; i <= options.MaxWidth(); ++i) {
+          double v = base_wcost / i - base_rcost;
+          if (v < 0) break;
+          market->emplace_back(Current(), v);
+        }
       }
     } else {
       table[HoleFileCapacity] = 8;
@@ -690,16 +693,18 @@ struct SBSIterator : public Printable {
     for (int height = SBSHeight() - 1; height > 0; --height) {
       SeekToRoot();
       for (Dive(SBSHeight() - 1 - height); Valid(); Next()) 
-        UpdateTable(now, &gtable, &market);
+        UpdateTable(now, &gtable, nullptr);
+        //UpdateTable(now, &gtable, &market);
     }
     std::sort(market.begin(), market.end(), 
       [](std::pair<Coordinates, double>& a, std::pair<Coordinates, double> b) {
         return a.second > b.second;});
-    size_t data_size = gtable[LocalLeaf] > 1000 ? gtable[LocalLeaf] : 1000;
-    double capacity = 1.0 * data_size * head_->options_.SpaceAmplificationConst();
-    if (capacity > market.size()) capacity = market.size();
-    size_t cap = capacity;
-    for (size_t i = 0; i < cap; ++i)
+    size_t data_size = gtable[LocalLeaf];// > 1000 ? gtable[LocalLeaf] : 1000;
+    size_t capacity = 1.0 * data_size * head_->options_.SpaceAmplificationConst();
+    size_t market_size = market.size();
+    if (capacity > market.size()) 
+      capacity = market.size();
+    for (size_t i = 0; i < capacity; ++i)
       market[i].first.Table()[HoleFileCapacity] ++;
   }
 };

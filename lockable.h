@@ -15,7 +15,9 @@ struct Lockable {
   Lockable() = default;
   virtual ~Lockable() {}
   void ReadLock() { mu_.lock(); }
-  void WriteLock() { mu_.lock(); }
+  void WriteLock() { 
+    mu_.lock(); 
+  }
   void Unlock() { mu_.unlock(); }
   void AssertHeld() {}
 #elif defined(LOCK_TYPE_PTHREAD_RWLOCK)
