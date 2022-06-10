@@ -620,16 +620,27 @@ struct SBSIterator : public Printable {
     table.ResetVariables();
 
     const Statistics* stats = Current().node_->GetTreeStatistics(height); 
-    table[LocalGet]     = stats->GetStatistics(KSGetCount, now - 1) / time;
-    table[LocalWrite]   = stats->GetStatistics(KSPutCount, now - 1) / time;
-    table[LocalIterate] = stats->GetStatistics(KSIterateCount, now - 1) / time;
+    table[LocalGet]     = stats->GetStatistics(KSGetCount, now - 1) * 60 / time;
+    table[LocalWrite]   = stats->GetStatistics(KSPutCount, now - 1) * 60 / time;
+    table[LocalIterate] = stats->GetStatistics(KSIterateCount, now - 1) * 60 / time;
     table[LocalLeaf]    = stats->GetStatistics(LeafCount, -1);
+    
+    uint64_t bytes = stats->GetStatistics(KSBytesCount, STATISTICS_ALL);
+    uint64_t entries = stats->GetStatistics(KSPutCount, STATISTICS_ALL);
+    table[BytePerKey] = entries == 0 ? 1024 : bytes / entries;
+  
+    if (!gtable) gtable = &table;
+    {
+      
+      uint64_t total_operations = 1 +
+        (*gtable)[LocalGet]   * 1 +
+        (*gtable)[LocalWrite] * 1 +
+        (*gtable)[LocalIterate] * 10;
 
-    if (gtable) {
-      table[GetPercent] = table[LocalGet] == 0 ? 0 : 100ULL * (*gtable)[LocalGet] / table[LocalGet];
-      table[WritePercent] = table[LocalWrite] == 0 ? 0 : 100ULL * (*gtable)[LocalWrite] / table[LocalWrite];
-      table[IteratePercent] = table[LocalIterate] == 0 ? 0 : 100ULL * (*gtable)[LocalIterate] / table[LocalIterate];
-      table[SpacePercent] = table[LocalLeaf] == 0 ? 0 : 100ULL * (*gtable)[LocalLeaf] / table[LocalLeaf];
+      table[GetPercent]     = 1000000ULL * table[LocalGet] / total_operations;
+      table[WritePercent]   = 1000000ULL * table[LocalWrite] / total_operations;
+      table[IteratePercent] = 1000000ULL * table[LocalIterate] / total_operations;
+      table[SpacePercent]   = 1000000ULL * table[LocalLeaf] / (*gtable)[LocalLeaf];
     }
 
     BFileVec children;
@@ -652,22 +663,33 @@ struct SBSIterator : public Printable {
     table[MinHoleFileSize] = options.MaxFileSize() / 2;
     if (market) {
       //double WWeight = (100.0 + table[LocalWrite]) / (100.0 + 1.0 * table[LocalWrite] + 0.2 * table[LocalGet] + 10000.0 * table[LocalIterate]);
-      table[HoleFileCapacity] = 1;  
-      if (table[WritePercent]) {
+      table[HoleFileCapacity] = 1; 
+      {
         double alpha = 0.5;
+        double page_size = 4096;
         double cost[options.MaxWidth() + 2];
-        double write = table[WritePercent] ? (100.0 / table[WritePercent]) : 0;
-        double get = table[GetPercent] ? (100.0 / table[GetPercent]) : 0;
-        double iter = table[IteratePercent] ? (100.0 / table[IteratePercent]) : 0;
-        double B = 4096;
-        double p = 0.001;
-      
-        double base_wcost = 2 * 1 * alpha * width * write;
-        double base_rcost = B * (p * get + iter);
         
-        for (size_t i = 2; i <= options.MaxWidth(); ++i) {
+        size_t lbound = table[LocalLeaf] * 100;
+        double write = table[LocalWrite];
+        double get = table[LocalGet];
+        double iter = table[LocalIterate];
+        if (write < lbound) write = lbound;
+        if (get < lbound) get = lbound;
+        double rsize = (*gtable)[BytePerKey];
+        double B = page_size / rsize;
+        double p = 0.001;
+        double move_cost = page_size;
+      
+        double T = width;
+        if (T < options.MinWidth() && height >= 3 && Current().node_->IsHead())
+          T = Current().node_->GeneralWidth(height, 2);
+        double base_wcost = 2 * 1 * (alpha + (height == 1 ? 1 : 0)) * T * write;
+        double base_rcost = B * p * get + (B + move_cost) * iter;
+        
+        size_t max_runs = T;
+        for (size_t i = 2; i <= max_runs; ++i) {
           double v = base_wcost / i - base_rcost;
-          if (v < 0) break;
+          if (v <= 0) break;
           market->emplace_back(Current(), v);
         }
       }
@@ -693,19 +715,22 @@ struct SBSIterator : public Printable {
     for (int height = SBSHeight() - 1; height > 0; --height) {
       SeekToRoot();
       for (Dive(SBSHeight() - 1 - height); Valid(); Next()) 
-        UpdateTable(now, &gtable, nullptr);
-        //UpdateTable(now, &gtable, &market);
+        //UpdateTable(now, &gtable, nullptr);
+        UpdateTable(now, &gtable, &market);
     }
     std::sort(market.begin(), market.end(), 
       [](std::pair<Coordinates, double>& a, std::pair<Coordinates, double> b) {
         return a.second > b.second;});
     size_t data_size = gtable[LocalLeaf];// > 1000 ? gtable[LocalLeaf] : 1000;
-    size_t capacity = 1.0 * data_size * head_->options_.SpaceAmplificationConst();
+    size_t capacity = 2.0 * data_size * head_->options_.SpaceAmplificationConst();
     size_t market_size = market.size();
     if (capacity > market.size()) 
       capacity = market.size();
-    for (size_t i = 0; i < capacity; ++i)
-      market[i].first.Table()[HoleFileCapacity] ++;
+    for (size_t i = 0; i < capacity; ++i) {
+      auto &runs = market[i].first.Table()[HoleFileCapacity];
+      runs ++;
+      //assert(runs <= head_->options_.MaxWidth());
+    }
   }
 };
 

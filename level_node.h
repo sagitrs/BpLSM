@@ -21,6 +21,9 @@ enum TableVariableName : uint32_t {
   LocalWrite,
   LocalIterate,
   LocalLeaf,
+  LocalWriteBytes,
+  BytePerKey,
+
   GetPercent,
   WritePercent,
   IteratePercent,
@@ -112,6 +115,9 @@ struct LevelNode : public Printable {
         set.emplace_back("Get", std::to_string(at(LocalGet)));
         set.emplace_back("Put", std::to_string(at(LocalWrite)));
         set.emplace_back("Iter", std::to_string(at(LocalIterate)));
+        set.emplace_back("RelGet", std::to_string(at(GetPercent)));
+        set.emplace_back("RelPut", std::to_string(at(WritePercent)));
+        set.emplace_back("RelIter", std::to_string(at(IteratePercent)));
         set.emplace_back("\nFileInfo", "\n");
         set.emplace_back("TapeSize", std::to_string(at(TapeFileSize) >> 20) + "MB");
         set.emplace_back("HoleSize", std::to_string(at(HoleFileSize) >> 20) + "MB");

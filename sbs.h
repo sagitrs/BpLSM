@@ -434,7 +434,7 @@ struct SBSkiplist {
       for (size_t i = 0; i < map.size(); ++i) {
         if (map[i].size() > h) {
           size_t x = map[i][h];
-          char ch = (x < 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
+          char ch = (x <= 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
           os << ch;
         } else 
           os << ' ';
@@ -452,8 +452,15 @@ struct SBSkiplist {
     for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
       auto height = iter->Current().node_->Height();
       std::vector<size_t> height_state;
-      for (size_t i = 0; i < height; ++i)
-        height_state.push_back(iter->Current().node_->GetLevel(i)->table_[HoleFileCapacity]);
+      for (size_t i = 0; i < height; ++i) {
+        size_t max_runs = iter->Current().node_->GetLevel(i)->table_[HoleFileCapacity];
+        //assert(max_runs >= 0);
+        if (max_runs > options_.MaxWidth() * options_.DefaultWidth()) {
+          std::cout << "Error : Invalid Max Runs." << std::endl;
+          assert(false);
+        }
+        height_state.push_back(max_runs);
+      }
       map.push_back(height_state);
       if (height > maxh) maxh = height;
     }
@@ -461,7 +468,97 @@ struct SBSkiplist {
       for (size_t i = 0; i < map.size(); ++i) {
         if (map[i].size() > h) {
           size_t x = map[i][h];
-          char ch = (x < 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
+          char ch = (x <= 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
+          if (ch == '@') assert(false);
+          os << ch;
+        } else 
+          os << ' ';
+      }
+      os << std::endl;
+    }
+    os << "----------Print Tape File End----------" << std::endl;
+    delete iter;
+  }
+  void PrintWriteReadSimple(std::ostream& os) const {
+    auto iter = NewIterator();
+    std::vector<std::vector<size_t>> map;
+    size_t maxh = 0;
+    os << "-------- Print Write-Read Rate --------" << std::endl;
+    double time = options_.TimeSliceMicroSecond() / 1000 / 1000;
+    int64_t now = options_.NowTimeSlice();
+    for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
+      auto height = iter->Current().node_->Height();
+      std::vector<size_t> height_state;
+      for (size_t i = 0; i < height; ++i) {
+        uint64_t read = 0, write = 0;
+        if (i > 0) {
+          read = iter->Current().node_->GetLevel(i)->table_[LocalGet];
+          write = iter->Current().node_->GetLevel(i)->table_[LocalWrite];
+        }
+        else {
+          SBSNode* node = iter->Current().node_;
+          const Statistics* stats = node->GetTreeStatistics(i);
+          if (stats) { 
+            read = stats->GetStatistics(KSGetCount, now - 1) / time;
+            write = stats->GetStatistics(KSPutCount, now - 1) / time;
+          }
+        }
+        size_t r = (read+write) == 0 ? 0 : 10 * write / (read + write);
+        height_state.push_back(r);
+      }
+      map.push_back(height_state);
+      if (height > maxh) maxh = height;
+    }
+    for (int h = maxh - 1; h >= 0; --h) {
+      for (size_t i = 0; i < map.size(); ++i) {
+        if (map[i].size() > h) {
+          size_t x = map[i][h];
+          char ch = (x <= 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
+          os << ch;
+        } else 
+          os << ' ';
+      }
+      os << std::endl;
+    }
+    os << "----------Print Tape File End----------" << std::endl;
+    delete iter;
+  }
+  void PrintHotSimple(std::ostream& os) const {
+    auto iter = NewIterator();
+    std::vector<std::vector<size_t>> map;
+    size_t maxh = 0;
+    os << "-------- Print Hot Rate --------" << std::endl;
+    double time = options_.TimeSliceMicroSecond() / 1000 / 1000;
+    int64_t now = options_.NowTimeSlice();
+    for (iter->SeekToFirst(0); iter->Valid(); iter->Next()) {
+      auto height = iter->Current().node_->Height();
+      std::vector<size_t> height_state;
+      for (size_t i = 0; i < height; ++i) {
+        uint64_t read = 0, write = 0;
+        if (i > 0) {
+          read = iter->Current().node_->GetLevel(i)->table_[LocalGet];
+          write = iter->Current().node_->GetLevel(i)->table_[LocalWrite];
+        }
+        else {
+          SBSNode* node = iter->Current().node_;
+          const Statistics* stats = node->GetTreeStatistics(i);
+          if (stats) { 
+            read = stats->GetStatistics(KSGetCount, now - 1) / time;
+            write = stats->GetStatistics(KSPutCount, now - 1) / time;
+          }
+        }
+        uint64_t total = read+write;
+        size_t r = total > 1 ? std::log10(total) : 0;
+        height_state.push_back(r);
+      }
+      map.push_back(height_state);
+      if (height > maxh) maxh = height;
+    }
+    for (int h = maxh - 1; h >= 0; --h) {
+      for (size_t i = 0; i < map.size(); ++i) {
+        if (map[i].size() > h) {
+          size_t x = map[i][h];
+          char ch = (x <= 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
           os << ch;
         } else 
           os << ' ';
@@ -488,7 +585,7 @@ struct SBSkiplist {
       for (size_t i = 0; i < map.size(); ++i) {
         if (map[i].size() > h) {
           size_t x = map[i][h];
-          char ch = (x < 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
+          char ch = (x <= 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
           os << ch;
         } else 
           os << ' ';
@@ -524,13 +621,15 @@ struct SBSkiplist {
     std::stringstream ss;
   #if defined(MINIMUM_BVERSION_PRINT)
     PrintSimple(ss);
-    PrintSmallFileSimple(ss);
+    //PrintSmallFileSimple(ss);
     PrintCapacitySimple(ss);
+    //PrintWriteReadSimple(ss);
+    //PrintHotSimple(ss);
   #else
     PrintList(ss);
     //PrintStatistics(ss);
   #endif
-    PrintStatistics(ss);
+    //PrintStatistics(ss);
     return ss.str();
   }
   size_t size() const {
@@ -582,11 +681,15 @@ struct SBSkiplist {
       //  iter.CheckAbsorbEmptyNext(options_);
     }
   }
-  size_t Level0Size() {
-    for (size_t i = head_->Height() - 1; i > 0; --i) {
-      size_t size = head_->GetLevel(i)->buffer_.size();
-      if (size > 0 && head_->Next(i) == nullptr)
+  size_t Level0Size(size_t* cap = nullptr) {
+    for (size_t i = 0; i < head_->Height(); ++i) {
+      LevelNode* lnode = head_->GetLevel(i);
+      if (head_->Next(i) == nullptr) {
+        size_t size = lnode->buffer_.HoleSize();
+        if (cap)
+          *cap = lnode->table_[HoleFileCapacity];
         return size;
+      }
     }
     return 0;
   }

@@ -33,10 +33,7 @@ enum DefaultTypeLabel : uint32_t {
   // to record iterate operation of this value.
   // clear at Compaction.
   KSPutCount,
-  // to record get operation in key space.
-  // Inherited at Compaction.
-  // Construct: Set to 0 for all nodee.
-  // Update: increase when buffer element is read.   
+  KSBytesCount,
   PutCount,
   // for special usage.
   // recording total put operations globally.
@@ -145,21 +142,21 @@ struct SBSOptions : public SBSNodeOptions,
 
   size_t kMaxHeight() const { return 6; }
 
-  double SpaceAmplificationConst() const { return 0.5; }
+  double SpaceAmplificationConst() const { return 0.2; }
   double CacheCapacity() const { return 0.3; }
   double ApproximateBufferNodeConst() const { return 1.0 / (DefaultWidth() - 1); }
   //double FilesPerNode() const { return SpaceAmplificationConst() / ApproximateBufferNodeConst(); }
   double LevelCapabilityConst(size_t level) const { return std::pow(1.0 / DefaultWidth(), level); }
  
-  inline size_t ReadSampleConst() const { return 100; }
-  inline size_t WriteSampleConst() const { return 100; }
+  inline size_t ReadSampleConst() const { return 50; }
+  inline size_t WriteSampleConst() const { return 50; }
   inline size_t IterateSampleConst() const { return 1; }
   inline size_t CompactSampleConst() const { return 10; }
   
   size_t level0_compaction_size_ = 16;
   inline size_t Level0CompactionSize() const { return level0_compaction_size_; }
-  inline size_t Level0SlowDownSize() const { return level0_compaction_size_ * 3 / 2; }
-  inline size_t Level0StopSize() const { return level0_compaction_size_ * 2; }
+  inline double SlowDownScore() const { return 3; }
+  inline double StopScore() const { return 10; }
   
   static const size_t PageConst = 4096;
   static const size_t OutputFileMinConst = 4;
