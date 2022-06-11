@@ -123,14 +123,12 @@ struct BFileVecIterator : public BaseIter {
     // unfinished.
     assert(false);
   }
-  bool OpenOneGE(const Slice& lbound, bool echo) {
-    //assert(forward_curr_ < forward_.size());
-    // no file covers this key, but a result may be needed.
+  size_t OpenEqual(size_t k, bool echo) {
     size_t opened = 0;
-    std::string minkey = FMin(forward_curr_).ToString();
+    std::string key = FMin(k).ToString();
     size_t tail;
     for (tail = forward_curr_ + 1; tail < forward_.size(); ++tail) {
-      int cmp = FMin(tail).compare(minkey);
+      int cmp = FMin(tail).compare(key);
       if (cmp == 0) continue;
       if (cmp < 0) assert(false);
       break;
@@ -140,9 +138,9 @@ struct BFileVecIterator : public BaseIter {
         Open(F(i), echo);
       opened ++;
     }
-    return opened > 0;
+    return opened;
   }
-  bool OpenOneIN(const Slice& lbound, const Slice& rbound, bool echo) {
+  size_t OpenFirst(const Slice& lbound, const Slice& rbound, bool echo) {
     //assert(forward_curr_ < forward_.size());
     // no file covers this key, but a result may be needed.
     size_t opened = 0;
@@ -152,24 +150,12 @@ struct BFileVecIterator : public BaseIter {
       assert(lfit);
       if (!rfit) {
         // this file shouldn't be open now.
-        return 0;
+        return opened;
       }
-      auto h = F(i);
-      if (!h->isOpened())
-        Open(F(i), echo);
-      //forward_curr_ = i;
-      for (size_t j = i + 1; j < forward_.size(); ++j) {
-        int cmp = FMin(j).compare(FMin(i));
-        assert(cmp >= 0);
-        if (cmp > 0)
-          break;
-        if (!F(j)->isOpened())
-          Open(F(j), echo);
-        //forward_curr_ = j;
-      }
-      return 1;
+      opened += OpenEqual(i, echo);
+      if (opened > 0) return opened;
     }
-    return opened > 0;
+    return opened;
   }
   void LocateForward(const Slice& key) {
     for (; forward_curr_ < forward_.size(); ++forward_curr_)
@@ -177,7 +163,9 @@ struct BFileVecIterator : public BaseIter {
         break;
   }
   virtual void Seek(const Slice& ikey) override {
-    //std::vector<Handle*> 
+    // F(forward_curr_) > key >= F(forward_curr_ - 1).
+    // 1. find if key in files <= key.
+    // 2. if no file contains this key,  open mininum file > key.
     Slice key(leveldb::ExtractUserKey(ikey));
     forward_curr_ = 0;
     LocateForward(key);
@@ -189,36 +177,45 @@ struct BFileVecIterator : public BaseIter {
         opened ++;
       }
     }
-    if (opened > 0) {
-      BaseIter::Seek(key);
-      assert(Valid());
+    BaseIter::Seek(key);
+    if (Valid()) {
       return;
     }
+    assert(opened == 0);
     // no file covers this key. Any file larger than this key?
     if (forward_curr_ == forward_.size()) {
-      BaseIter::Seek(key);
-      assert(!Valid());
       return;
+      // no key in this iterator equal or larger than ikey.
     }
-    OpenOneGE(key, false);
-    BaseIter::Seek(key);
-    assert(Valid());  
+    opened = OpenEqual(forward_curr_, false);
+    if (opened > 0) {
+      BaseIter::Seek(key);
+      assert(Valid()); 
+    } else {
+      assert(false);
+    } 
   }
   virtual void Next() override {
+    // 1. Seek from key1 to key2.
+    // 2. Open files between (key1, key2], reopen.
+    // 3. if seek failed, open next files.
+    
+    assert(Valid());
     BaseIter::Next();
     Slice key1(leveldb::ExtractUserKey(istat_.key_));
-    bool open = false;
+    size_t opened = 0;
+    LocateForward(key1);
     if (!Valid()) {
       // current file is finished.
-      open = OpenOneGE(key1, true);
+      opened = OpenEqual(forward_curr_, true);
     } else {
       Slice key2(leveldb::ExtractUserKey(key()));
-      open = OpenOneIN(key1, key2, true);
+      opened = OpenFirst(key1, key2, true);
     }
     if (!Valid()) {
+      assert(opened == 0);
       // reach the end. 
     } else {
-      LocateForward(key());
     }
   }
   virtual void Prev() override {
