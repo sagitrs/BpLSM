@@ -153,10 +153,10 @@ struct SBSOptions : public SBSNodeOptions,
   inline size_t IterateSampleConst() const { return 1; }
   inline size_t CompactSampleConst() const { return 10; }
   
-  size_t level0_compaction_size_ = 16;
+  size_t level0_compaction_size_ = 8;
   inline size_t Level0CompactionSize() const { return level0_compaction_size_; }
-  inline double SlowDownScore() const { return 3; }
-  inline double StopScore() const { return 10; }
+  inline double SlowDownScore() const { return 1.7; }
+  inline double StopScore() const { return 1.9; }
   
   static const size_t PageConst = 4096;
   static const size_t OutputFileMinConst = 4;
