@@ -469,7 +469,7 @@ struct SBSkiplist {
         if (map[i].size() > h) {
           size_t x = map[i][h];
           char ch = (x <= 9 ? ('0' + x) : (x < 36 ? ('A' + x - 10) : '@'));
-          if (ch == '@') assert(false);
+          //if (ch == '@') assert(false);
           os << ch;
         } else 
           os << ' ';

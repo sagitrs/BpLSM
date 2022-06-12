@@ -124,6 +124,7 @@ struct BFileVecIterator : public BaseIter {
     assert(false);
   }
   size_t OpenEqual(size_t k, bool echo) {
+    if (k >= forward_.size()) return 0;
     size_t opened = 0;
     std::string key = FMin(k).ToString();
     size_t tail;
@@ -183,7 +184,7 @@ struct BFileVecIterator : public BaseIter {
     }
     assert(opened == 0);
     // no file covers this key. Any file larger than this key?
-    if (forward_curr_ == forward_.size()) {
+    if (forward_curr_ >= forward_.size()) {
       return;
       // no key in this iterator equal or larger than ikey.
     }
@@ -207,7 +208,9 @@ struct BFileVecIterator : public BaseIter {
     LocateForward(key1);
     if (!Valid()) {
       // current file is finished.
-      opened = OpenEqual(forward_curr_, true);
+      if (forward_curr_ < forward_.size())
+        opened = OpenEqual(forward_curr_, true);
+      // otherwise, no file to open.
     } else {
       Slice key2(leveldb::ExtractUserKey(key()));
       opened = OpenFirst(key1, key2, true);
