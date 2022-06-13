@@ -155,14 +155,13 @@ struct SBSOptions : public SBSNodeOptions,
   
   size_t level0_compaction_size_ = 8;
   inline size_t Level0CompactionSize() const { return level0_compaction_size_; }
-  inline double SlowDownScore() const { return 1.7; }
-  inline double StopScore() const { return 1.9; }
+  inline double SlowDownScore() const { return 1.9; }
+  inline double StopScore() const { return 2; }
   
   static const size_t PageConst = 4096;
-  static const size_t OutputFileMinConst = 4;
   size_t SamplePerInputFile() const { return MaxFileSize() / CompactSampleConst() / PageConst; }
-  size_t SamplePerOutputFile() const { return SamplePerInputFile() / OutputFileMinConst; }
-  size_t OutputFileMinSize() const { return MaxFileSize() / OutputFileMinConst / 2; }
+  size_t SamplePerOutputFile() const { return SamplePerInputFile() * 9 / 10; }
+  size_t OutputFileMinSize() const { return MaxFileSize() * 2 / 3; }
   //size_t sample_per_file_ = max_file / options.CompactSampleConst() / PageConst
   //size_t sample_per_output_file_;
   bool force_pick_ = 1;

@@ -621,15 +621,15 @@ struct SBSkiplist {
     std::stringstream ss;
   #if defined(MINIMUM_BVERSION_PRINT)
     PrintSimple(ss);
-    //PrintSmallFileSimple(ss);
+    PrintSmallFileSimple(ss);
     PrintCapacitySimple(ss);
     //PrintWriteReadSimple(ss);
     //PrintHotSimple(ss);
   #else
     PrintList(ss);
-    //PrintStatistics(ss);
+    PrintStatistics(ss);
   #endif
-    //PrintStatistics(ss);
+    PrintStatistics(ss);
     return ss.str();
   }
   size_t size() const {

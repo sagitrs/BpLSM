@@ -13,12 +13,13 @@
 typedef leveldb::DynamicMergingIterator BaseIter;
 
 namespace sagitrs {
-
+enum CursorState { CursorNotFound, LessThanCursor, GreaterThanCursor, OverlapsCursor };
 struct BFileVecIterator : public BaseIter {
   struct Handle {
     BFile* file_;
     Iterator* iter_;
-    Handle(BFile* file) : file_(file), iter_(nullptr) {}
+    CursorState cs_;
+    Handle(BFile* file) : file_(file), iter_(nullptr), cs_(CursorNotFound) {}
     Iterator* OpenIterator(const leveldb::ReadOptions& roptions, leveldb::Version* v) { 
       assert(!iter_);
       iter_ = v->GetBFileIterator(roptions, file_->Data()->number, file_->Data()->file_size);
@@ -26,6 +27,16 @@ struct BFileVecIterator : public BaseIter {
     }
     uint64_t ID() const { return file_->Identifier(); }
     bool isOpened() const { return iter_ != nullptr; }
+    CursorState State() const { return cs_; }
+    CursorState UpdateCursor(const Slice& cursor) {
+      if (cursor.compare(file_->Min()) < 0)
+        cs_ = GreaterThanCursor;
+      else if (cursor.compare(file_->Max()) > 0)  
+        cs_ = LessThanCursor;
+      else
+        cs_ = OverlapsCursor;
+      return cs_;
+    }
     //bool Less(const Slice& key) { return file_->Max().compare(key) < 0; }
   };
   
@@ -77,11 +88,17 @@ struct BFileVecIterator : public BaseIter {
       else
         reserved_id.erase(p.first);
     std::set<uint64_t>& added_id = reserved_id;
-    for (uint64_t id : removed_id)
+    for (uint64_t id : removed_id) {
+      Handle* h = handles_[id];
+      Del(id, false);
+      delete h;
       handles_.erase(id);
+    }
     for (BFile* file : files) 
-      if (added_id.find(file->Identifier()) != added_id.end())
-        handles_.emplace(file->Identifier(), new Handle(file));
+      if (added_id.find(file->Identifier()) != added_id.end()) {
+        Handle* h = new Handle(file);
+        handles_.emplace(file->Identifier(), h);
+      }
 
     forward_.clear();
     for (auto& p : handles_)
@@ -94,40 +111,56 @@ struct BFileVecIterator : public BaseIter {
           std::swap(forward_[j], forward_[k]);
       }
   }
-  bool SubValid(uint64_t id) {
-    auto p = iters_.find(id);
-    if (p == iters_.end()) {
-      Slice user_key(Valid() ? 
-        leveldb::ExtractUserKey(key()) : 
-        istat_.key_);
-      auto r = handles_.find(id);
-      assert(r != handles_.end());
-      return user_key.compare(r->second->file_->Max()) <= 0;
-    } else {
-      return p->second.Valid();
+  void Redo() {
+    std::string key = istat_.key_;
+    switch (istat_.type_) {
+    case leveldb::IteratorState::kSeekToFirst: {
+      SeekToFirst();
+    } break;
+    case leveldb::IteratorState::kSeekToLast: {
+      SeekToLast();
+    } break;
+    case leveldb::IteratorState::kSeek: {
+      Seek(key);
+    } break;
+    case leveldb::IteratorState::kNext: {
+      Seek(key);
+      Next();
+    } break;
+    case leveldb::IteratorState::kPrev: {
+      Seek(key);
+      Prev();
+    } break;
+    case leveldb::IteratorState::kNoOperation: {
+
+    } break;
+    default:
+      break;
     }
   }
-  
-  virtual void SeekToFirst() override { 
-    if (N() == 0) return;
-    leveldb::Slice head(FMin(0));
-    for (forward_curr_ = 0; 
-         forward_curr_ < N() && 
-         FMin(forward_curr_).compare(head) <= 0; 
-         ++forward_curr_)
-      if (!F(forward_curr_)->isOpened())
-        Open(F(forward_curr_), false);
-    BaseIter::SeekToFirst();
+  bool FileValid(uint64_t id) {
+    Handle* h = handles_[id];
+    if (h->isOpened())
+      return h->iter_->Valid();
+    else {
+      Slice ukey(leveldb::ExtractUserKey(
+        Valid() ? key() : istat_.key_));
+      return h->file_->Max().compare(ukey) >= 0;
+    }
   }
-  virtual void SeekToLast() override {
-    // unfinished.
-    assert(false);
+  bool VecValid(const std::vector<BFile*>& files) {
+    for (BFile* file : files) {
+      if (FileValid(file->Identifier()))
+        return 1;
+    }
+    return 0;
   }
-  size_t OpenEqual(size_t k, bool echo) {
+ private:
+  size_t NextOpenEqual(size_t k, bool echo) {
     if (k >= forward_.size()) return 0;
-    size_t opened = 0;
     std::string key = FMin(k).ToString();
     size_t tail;
+    size_t opened = 0;
     for (tail = forward_curr_ + 1; tail < forward_.size(); ++tail) {
       int cmp = FMin(tail).compare(key);
       if (cmp == 0) continue;
@@ -141,84 +174,91 @@ struct BFileVecIterator : public BaseIter {
     }
     return opened;
   }
-  size_t OpenFirst(const Slice& lbound, const Slice& rbound, bool echo) {
-    //assert(forward_curr_ < forward_.size());
-    // no file covers this key, but a result may be needed.
-    size_t opened = 0;
-    for (size_t i = forward_curr_; i < forward_.size(); ++i) {
-      bool lfit = FMin(i).compare(lbound) >= 0;
-      bool rfit = FMin(i).compare(rbound) <= 0;
-      assert(lfit);
-      if (!rfit) {
-        // this file shouldn't be open now.
-        return opened;
-      }
-      opened += OpenEqual(i, echo);
-      if (opened > 0) return opened;
-    }
-    return opened;
+  size_t NextOpenEqual(size_t k, const Slice& upper, bool echo) {
+    if (k >= forward_.size()) return 0;
+    if (FMin(k).compare(upper) > 0) return 0;
+    return NextOpenEqual(k, echo);
   }
   void LocateForward(const Slice& key) {
-    for (; forward_curr_ < forward_.size(); ++forward_curr_)
-      if (FMin(forward_curr_).compare(key) >= 0)
+    for (; forward_curr_ < forward_.size(); ++forward_curr_) {
+      if (F(forward_curr_)->UpdateCursor(key) == GreaterThanCursor)
         break;
+    }
+    for (size_t i = forward_curr_ + 1; i < forward_.size(); ++i)
+      F(i)->cs_ = GreaterThanCursor;
   }
-  virtual void Seek(const Slice& ikey) override {
-    // F(forward_curr_) > key >= F(forward_curr_ - 1).
-    // 1. find if key in files <= key.
-    // 2. if no file contains this key,  open mininum file > key.
-    Slice key(leveldb::ExtractUserKey(ikey));
+ public:  // inherit.
+  virtual void SeekToFirst() override { 
+    if (N() == 0) return;
     forward_curr_ = 0;
-    LocateForward(key);
+    for (size_t i = 0; i < forward_.size(); ++i)
+      F(i)->cs_ = GreaterThanCursor;
+    NextOpenEqual(0, false);
+    BaseIter::SeekToFirst();
+  }
+  virtual void SeekToLast() override {
+    // unfinished.
+    assert(false);
+  }
+  size_t OpenRange(const Slice& key1, const Slice& key2, bool echo) {
+    sagitrs::RealBounded bound(key1, key2);
     size_t opened = 0;
-    for (size_t i = 0; i < forward_curr_; ++i) {
-      if (FMin(i).compare(key) <= 0 && FMax(i).compare(key) >= 0) {
+    for (int i = 0; i < forward_.size(); ++i) {
+      if (F(i)->file_->Compare(bound) == BOverlap) {
         if (!F(i)->isOpened())
-          Open(F(i), false);
+          Open(F(i), echo);
         opened ++;
       }
     }
-    BaseIter::Seek(key);
-    if (Valid()) {
-      return;
-    }
-    assert(opened == 0);
-    // no file covers this key. Any file larger than this key?
-    if (forward_curr_ >= forward_.size()) {
-      return;
-      // no key in this iterator equal or larger than ikey.
-    }
-    opened = OpenEqual(forward_curr_, false);
-    if (opened > 0) {
-      BaseIter::Seek(key);
-      assert(Valid()); 
-    } else {
-      assert(false);
-    } 
+    return opened;
   }
+  virtual void Seek(const Slice& ikey) override {
+    Slice ukey(leveldb::ExtractUserKey(ikey));
+    size_t opened = 0;
+    opened = OpenRange(ukey, ukey, false);
+    if (opened > 0)
+      BaseIter::Seek(ikey);
+    if (Valid()) {
+      Slice key2(leveldb::ExtractUserKey(key()));
+      size_t opened2 = OpenRange(ukey, key2, true);
+    } else {
+      //assert(opened == 0);
+      forward_curr_ = 0;
+      LocateForward(ukey);
+      while (!Valid()) {
+        opened = NextOpenEqual(forward_curr_, false);
+        if (opened > 0)
+          BaseIter::Seek(ikey);
+      }
+    }
+  }
+  virtual void NextEnd(uint64_t id) override {
+    Handle* h = handles_[id];
+    h->cs_ = LessThanCursor;
+  } 
   virtual void Next() override {
     // 1. Seek from key1 to key2.
     // 2. Open files between (key1, key2], reopen.
     // 3. if seek failed, open next files.
-    
     assert(Valid());
     BaseIter::Next();
+    assert(!istat_.key_.empty());
     Slice key1(leveldb::ExtractUserKey(istat_.key_));
     size_t opened = 0;
     LocateForward(key1);
-    if (!Valid()) {
-      // current file is finished.
-      if (forward_curr_ < forward_.size())
-        opened = OpenEqual(forward_curr_, true);
-      // otherwise, no file to open.
-    } else {
-      Slice key2(leveldb::ExtractUserKey(key()));
-      opened = OpenFirst(key1, key2, true);
+    if (forward_curr_ >= forward_.size()) {
+      // no files to open.
+        return;
     }
     if (!Valid()) {
-      assert(opened == 0);
-      // reach the end. 
+      // current file is finished.
+      opened = NextOpenEqual(forward_curr_, true);
+      assert(Valid());
     } else {
+      Slice ikey2(key());
+      assert(!ikey2.empty());
+      Slice key2(leveldb::ExtractUserKey(ikey2));
+      opened = NextOpenEqual(forward_curr_, key2, true);
     }
   }
   virtual void Prev() override {

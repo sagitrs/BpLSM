@@ -264,9 +264,13 @@ struct SBSIterator : public Printable {
     if (only_seek_next) {
       assert(Current().height_ == 0);
       for (; Valid(); Next()) {
-        SBSNode* next = Current().Next();
         BFile* a = Current().node_->GetLevel(0)->buffer_.GetOne();
-        assert(!a || a->Min().compare(key) <= 0);
+        if (a && a->Min().compare(key) > 0) {
+          std::cout << key.ToString() << "<" << a->Min().ToString() << std::endl;
+          fflush(stdout);
+          assert(!a || a->Min().compare(key) <= 0);
+        }
+        SBSNode* next = Current().Next();
         BFile* b = next ? next->GetLevel(0)->buffer_.GetOne() : nullptr;
         if (!b || key.compare(b->Min()) < 0) 
           return;
@@ -274,8 +278,10 @@ struct SBSIterator : public Printable {
     } else {
       RealBounded bound(key, key);
       SeekRange(bound);
-      if (Current().height_ > 0)
-        Dive(Current().height_);
+      if (Current().height_ > 0) {
+        SeekToFirst(0);
+        //Dive(Current().height_);
+      }
       SeekKeySpace(key, true);
     }
   }
@@ -628,7 +634,7 @@ struct SBSIterator : public Printable {
     uint64_t bytes = stats->GetStatistics(KSBytesCount, STATISTICS_ALL);
     uint64_t entries = stats->GetStatistics(KSPutCount, STATISTICS_ALL);
     table[BytePerKey] = entries == 0 ? 1024 : bytes / entries;
-  
+    assert(entries > 0);
     if (!gtable) gtable = &table;
     {
       
@@ -676,6 +682,7 @@ struct SBSIterator : public Printable {
         if (write < lbound) write = lbound;
         if (get < lbound) get = lbound;
         double rsize = (*gtable)[BytePerKey];
+        assert(rsize > 0);
         double B = page_size / rsize;
         double p = 0.001;
         double move_cost = page_size;
