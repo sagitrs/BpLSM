@@ -453,7 +453,7 @@ struct SBSkiplist {
       auto height = iter->Current().node_->Height();
       std::vector<size_t> height_state;
       for (size_t i = 0; i < height; ++i) {
-        size_t max_runs = iter->Current().node_->GetLevel(i)->table_[HoleFileCapacity];
+        size_t max_runs = 0.01 * iter->Current().node_->GetLevel(i)->table_[HoleFileCapacity];
         //assert(max_runs >= 0);
         if (max_runs > options_.MaxWidth() * options_.DefaultWidth()) {
           std::cout << "Error : Invalid Max Runs." << std::endl;
@@ -687,7 +687,7 @@ struct SBSkiplist {
       if (head_->Next(i) == nullptr) {
         size_t size = lnode->buffer_.HoleSize();
         if (cap)
-          *cap = lnode->table_[HoleFileCapacity];
+          *cap = 0.01 * lnode->table_[HoleFileCapacity];
         return size;
       }
     }

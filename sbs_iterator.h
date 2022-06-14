@@ -666,10 +666,10 @@ struct SBSIterator : public Printable {
     table[TotalFileSize]  = table[HoleFileSize]  + table[TapeFileSize];
     table[TotalFileRuns]  = table[HoleFileRuns]  + table[TapeFileRuns];
 
-    table[MinHoleFileSize] = options.MaxFileSize() / 2;
+    table[MinHoleFileSize] = options.GlobalHoleFileSize();
     if (market) {
       //double WWeight = (100.0 + table[LocalWrite]) / (100.0 + 1.0 * table[LocalWrite] + 0.2 * table[LocalGet] + 10000.0 * table[LocalIterate]);
-      table[HoleFileCapacity] = 1; 
+      
       {
         double alpha = 0.5;
         double page_size = 4096;
@@ -693,7 +693,8 @@ struct SBSIterator : public Printable {
         double base_wcost = 2 * 1 * (alpha + (height == 1 ? 1 : 0)) * T * write;
         double base_rcost = B * p * get + (B + move_cost) * iter;
         
-        size_t max_runs = T;
+        size_t max_runs = T; 
+        table[HoleFileCapacity] = 100; 
         for (size_t i = 2; i <= max_runs; ++i) {
           double v = base_wcost / i - base_rcost;
           if (v <= 0) break;
@@ -701,7 +702,7 @@ struct SBSIterator : public Printable {
         }
       }
     } else {
-      table[HoleFileCapacity] = 8;
+      table[HoleFileCapacity] = 800;
     }
     table[FileSizeScore] = 100ULL * table[HoleFileSize] / options.MaxFileSize() / options.MaxCompactionFiles();
     table[FileRunScore]  = 100ULL * table[HoleFileRuns] / width / options.MaxCompactionFiles();
@@ -735,7 +736,7 @@ struct SBSIterator : public Printable {
       capacity = market.size();
     for (size_t i = 0; i < capacity; ++i) {
       auto &runs = market[i].first.Table()[HoleFileCapacity];
-      runs ++;
+      runs += 100;
       //assert(runs <= head_->options_.MaxWidth());
     }
   }
