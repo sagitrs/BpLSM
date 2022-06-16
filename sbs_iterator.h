@@ -636,18 +636,27 @@ struct SBSIterator : public Printable {
     table[BytePerKey] = entries == 0 ? 1024 : bytes / entries;
     assert(entries > 0);
     if (!gtable) gtable = &table;
-    {
       
-      uint64_t total_operations = 1 +
-        (*gtable)[LocalGet]   * 1 +
-        (*gtable)[LocalWrite] * 1 +
-        (*gtable)[LocalIterate] * 10;
+    double gread = (*gtable)[LocalGet];
+    double gwrite = (*gtable)[LocalWrite];
+    double giterate = (*gtable)[LocalIterate];
+    double gleaf = (*gtable)[LocalLeaf];
+    uint64_t goperations = 1 + gread + gwrite + giterate * 100;
 
-      table[GetPercent]     = 1000000ULL * table[LocalGet] / total_operations;
-      table[WritePercent]   = 1000000ULL * table[LocalWrite] / total_operations;
-      table[IteratePercent] = 1000000ULL * table[LocalIterate] / total_operations;
-      table[SpacePercent]   = 1000000ULL * table[LocalLeaf] / (*gtable)[LocalLeaf];
-    }
+    double aread = gread / gleaf;
+    double awrite = gwrite / gleaf;
+    double aiterate = giterate / gleaf;
+    
+    table[GetPercent]     = 1000000ULL * table[LocalGet] / goperations;
+    table[WritePercent]   = 1000000ULL * table[LocalWrite] / goperations;
+    table[IteratePercent] = 1000000ULL * table[LocalIterate] / goperations;
+    table[SpacePercent]   = 1000000ULL * table[LocalLeaf] / gleaf;
+    
+    table[MinHoleFileSize] = options.GlobalHoleFileSize();
+    //if (total_operations >= 100 && table[WritePercent] < 10000) {
+    //  if (height == 2)
+    //    table[MinHoleFileSize] = 0;
+    //} 
 
     BFileVec children;
     Current().node_->GetChildGuard(height, &children);
@@ -666,7 +675,9 @@ struct SBSIterator : public Printable {
     table[TotalFileSize]  = table[HoleFileSize]  + table[TapeFileSize];
     table[TotalFileRuns]  = table[HoleFileRuns]  + table[TapeFileRuns];
 
-    table[MinHoleFileSize] = options.GlobalHoleFileSize();
+    {
+    }
+        
     if (market) {
       //double WWeight = (100.0 + table[LocalWrite]) / (100.0 + 1.0 * table[LocalWrite] + 0.2 * table[LocalGet] + 10000.0 * table[LocalIterate]);
       
@@ -675,12 +686,11 @@ struct SBSIterator : public Printable {
         double page_size = 4096;
         double cost[options.MaxWidth() + 2];
         
-        size_t lbound = table[LocalLeaf] * 100;
         double write = table[LocalWrite];
         double get = table[LocalGet];
         double iter = table[LocalIterate];
-        if (write < lbound) write = lbound;
-        if (get < lbound) get = lbound;
+        double min_get = aread * table[LocalLeaf] * 0.01;
+        if (get < min_get) get = min_get;
         double rsize = (*gtable)[BytePerKey];
         assert(rsize > 0);
         double B = page_size / rsize;

@@ -204,7 +204,10 @@ struct SubSBS {
     return 0;
   }
   bool BuildWith(const std::vector<BFile*>& files) {
+    LevelNode* oldhead = head_->GetLevel(height_);
     LevelNode* newhead = BuildLNode(nullptr, nullptr, head_->Next(height_));
+    for (uint32_t i = TableVariableMin; i < TableVariableMax; ++i)
+      newhead->table_[i] = oldhead->table_[i];
     if (level1_compaction_) {
       // build nodes from gendata.
       // make sure gendata is sorted.
@@ -235,7 +238,7 @@ struct SubSBS {
       for (auto file : files) {
         size_t size = file->Data()->file_size;
         bool dive = false;
-        if (size >= Options().GlobalHoleFileSize()) {
+        if (size >= head_->GetLevel(height_)->table_[MinHoleFileSize]) {
           file->SetType(BFile::TypeHole);
           dive = TreePut(file, head_, height_);
         } else 

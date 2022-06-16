@@ -267,9 +267,9 @@ struct SBSkiplist {
     PickShard(shards, parent, options.table_);
     for (size_t i = 0; i < shards.size(); ++i) {
       Shard& tree = shards[i];
-      size_t insize = options.MaxFileSize();
+      size_t insize = options.GlobalHoleFileSize();
       size_t outsize = parent.Table()[MinHoleFileSize];
-      size_t limit = options.SamplePerInputFile() * insize / outsize;
+      size_t limit = options.SamplePerOutputFile() * outsize / insize;
       bool out_of_size = tree.sample_covers_ >= limit;
       bool divable = parent.height_ >= 3;
       if (force_pick || out_of_size) {

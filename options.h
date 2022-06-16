@@ -172,5 +172,4 @@ struct SBSOptions : public SBSNodeOptions,
   SBSOptions(const SBSOptions& options) = default;
 };
 
-
 }
