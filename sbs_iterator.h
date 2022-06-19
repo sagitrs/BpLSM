@@ -634,7 +634,7 @@ struct SBSIterator : public Printable {
     uint64_t bytes = stats->GetStatistics(KSBytesCount, STATISTICS_ALL);
     uint64_t entries = stats->GetStatistics(KSPutCount, STATISTICS_ALL);
     table[BytePerKey] = entries == 0 ? 1024 : bytes / entries;
-    assert(entries > 0);
+    //assert(entries > 0);
     if (!gtable) gtable = &table;
       
     double gread = (*gtable)[LocalGet];

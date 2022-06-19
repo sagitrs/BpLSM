@@ -218,7 +218,7 @@ struct BFileVecIterator : public BaseIter {
     opened = OpenRange(ukey, ukey, false);
     if (opened > 0)
       BaseIter::Seek(ikey);
-    if (Valid()) {
+    if (opened > 0 && Valid()) {
       Slice key2(leveldb::ExtractUserKey(key()));
       size_t opened2 = OpenRange(ukey, key2, true);
     } else {

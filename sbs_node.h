@@ -255,7 +255,7 @@ struct SBSNode : public Printable {
       }
       return res;
     }
-    Statistics* s = GetLevel(height)->table_.stats_;
+    Statistics*& s = GetLevel(height)->table_.stats_;
     if (s != nullptr) return s;
     
     std::vector<const Statistics*> ss;
@@ -271,6 +271,8 @@ struct SBSNode : public Printable {
         s->MergeStatistics(*stat);
     }
     GetLevel(height)->table_.SetDirty(false);
+    if (s == nullptr)
+      s = new Statistics(options_, options_.NowTimeSlice());
     return s;
   }
   bool SplitNext(const SBSOptions& options, size_t height, BFileVec* force = nullptr) {
