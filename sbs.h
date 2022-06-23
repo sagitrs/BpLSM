@@ -249,6 +249,7 @@ struct SBSkiplist {
       auto iter = NewIterator();
       iter->SeekToLast(0);
       last_file = iter->Current().Buffer().GetOne();
+      delete iter;
     }
     {
       Slice min_key(last_file->Min());
