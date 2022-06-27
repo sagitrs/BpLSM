@@ -675,9 +675,6 @@ struct SBSIterator : public Printable {
     table[TotalFileSize]  = table[HoleFileSize]  + table[TapeFileSize];
     table[TotalFileRuns]  = table[HoleFileRuns]  + table[TapeFileRuns];
 
-    {
-    }
-        
     if (market) {
       //double WWeight = (100.0 + table[LocalWrite]) / (100.0 + 1.0 * table[LocalWrite] + 0.2 * table[LocalGet] + 10000.0 * table[LocalIterate]);
       
@@ -693,20 +690,20 @@ struct SBSIterator : public Printable {
         if (get < min_get) get = min_get;
         double rsize = (*gtable)[BytePerKey];
         assert(rsize > 0);
-        double B = page_size / rsize;
-        double p = 0.001;
-        double move_cost = page_size;
-      
+        double B = page_size;
+        double p = 0.01;
+        double q = 0.7;
+        
         double T = width;
         if (T < options.MinWidth() && height >= 3 && Current().node_->IsHead())
           T = Current().node_->GeneralWidth(height, 2);
-        double base_wcost = 2 * 1 * (alpha + (height == 1 ? 1 : 0)) * T * write;
-        double base_rcost = B * p * get + (B + move_cost) * iter;
+        double base_wcost = 2 * 1 * ((alpha + (height == 1 ? 1 : 0)) * T) * write * rsize;
+        double base_rcost = B * q * (p * get + iter);
         
         size_t max_runs = T; 
         table[HoleFileCapacity] = 100; 
         for (size_t i = 2; i <= max_runs; ++i) {
-          double v = base_wcost / i - base_rcost;
+          double v = base_wcost / i / (i + 1) - base_rcost;
           if (v <= 0) break;
           market->emplace_back(Current(), v);
         }

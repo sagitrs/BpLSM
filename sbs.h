@@ -660,8 +660,11 @@ struct SBSkiplist {
   void ClearHottest() {
     for (auto node = head_; node != nullptr; node = node->Next(0)) {
       size_t height = node->Height();
-      for (size_t h = 1; h < height; ++h)
-        node->GetLevel(h)->table_.hottest_ = nullptr;
+      for (size_t h = 1; h < height; ++h) {
+        auto &table = node->GetLevel(h)->table_;
+        table.hottest_ = nullptr;
+        table.SetDirty(true);
+      }
     }
   }
 

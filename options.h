@@ -142,7 +142,7 @@ struct SBSOptions : public SBSNodeOptions,
 
   size_t kMaxHeight() const { return 6; }
 
-  double SpaceAmplificationConst() const { return 0.2; }
+  double SpaceAmplificationConst() const { return 0.3; }
   double CacheCapacity() const { return 0.3; }
   double ApproximateBufferNodeConst() const { return 1.0 / (DefaultWidth() - 1); }
   //double FilesPerNode() const { return SpaceAmplificationConst() / ApproximateBufferNodeConst(); }

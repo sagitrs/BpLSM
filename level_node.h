@@ -90,7 +90,7 @@ struct LevelNode : public Printable {
         *i = 0;
     }
     void SetDirty(bool state = true) { 
-      if (stats_) {
+      if (state && stats_) {
         delete stats_;
         stats_ = nullptr;
       } 
