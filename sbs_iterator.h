@@ -703,7 +703,7 @@ struct SBSIterator : public Printable {
         double base_wcost = 2 * 1 * (alpha + (height == 1 ? 1 : 0)) * T * write;
         double base_rcost = B * p * get + (B + move_cost) * iter;
         
-        size_t max_runs = T * 3 / 2; 
+        size_t max_runs = T; 
         table[HoleFileCapacity] = 100; 
         for (size_t i = 2; i <= max_runs; ++i) {
           double v = base_wcost / i - base_rcost;
