@@ -53,11 +53,13 @@ struct Sampler {
   
   SamplerOptions options_;
   SamplerTable read_sampler_, write_sampler_, write_bytes_sampler_, iterate_sampler_;
+  std::atomic<uint64_t> last_install_;
   //std::atomic<uint64_t> memory_usage_, record_count_;
  public:
   Sampler() : 
     options_(),
-    write_sampler_(), read_sampler_(), write_bytes_sampler_(), iterate_sampler_()
+    write_sampler_(), read_sampler_(), write_bytes_sampler_(), iterate_sampler_(),
+    last_install_(0)
     //memory_usage_(0), record_count_(0)
   {}
   ~Sampler() {}
@@ -72,6 +74,7 @@ struct Sampler {
   SamplerTable& ReadTable() { return read_sampler_; }
   SamplerTable& IterateTable() { return iterate_sampler_; }
   SamplerTable& WriteBytesTable() { return write_bytes_sampler_; }
+  std::atomic<uint64_t>& LastInstall() { return last_install_; }
 };
 
 }

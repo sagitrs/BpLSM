@@ -70,9 +70,9 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
       ed_time_ = st_time_;
       operator[](ed_time_).Clear();
     }
-      
   }
   void PushFront(int64_t time, const Counter& counter) {
+    //assert(space() >= 1);
     assert(time + 1 == st_time_);   // TODO: Fix bug here.
     if (isFull()) return;
     st_time_ --;
@@ -85,20 +85,21 @@ struct TTLQueue : public std::vector<Counter>, public Printable {
     (*this)[time] = counter;
   }
   void Push(int64_t time, const Counter& counter) {
-    if (time <= ed_time_) { 
-      //assert(t + 1 == st_time_);
+    assert(!TimeLegal(time));
+    if (time < st_time_) { 
+      assert(time + 1 == st_time_);
       PushFront(time, counter);
       return; 
-    }
-    if (time > ed_time_ + space()) {
-      PopFront(time - ed_time_ - space());
-    }
-    if (time > ed_time_ + 1) {
+    } else if (time > ed_time_) {
+      if (time > ed_time_ + space()) {
+        PopFront(time - ed_time_ - space());
+      }
       Counter blank;
-      for (auto t = ed_time_ + 1; t < time; ++t)
-        PushBack(t, blank);
+      for (auto t = ed_time_ + 1; t <= time; ++t)
+        PushBack(t, t == time ? counter : blank);
+    } else {
+      assert(false);
     }
-    PushBack(time, counter);
   }
   void Merge(const TTLQueue& queue) {
     assert(ed_time_ >= queue.ed_time_);

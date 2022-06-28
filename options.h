@@ -155,8 +155,8 @@ struct SBSOptions : public SBSNodeOptions,
   
   size_t level0_compaction_size_ = 8;
   inline size_t Level0CompactionSize() const { return level0_compaction_size_; }
-  inline double SlowDownScore() const { return 1.9; }
-  inline double StopScore() const { return 3; }
+  inline double SlowDownScore() const { return 1.7; }
+  inline double StopScore() const { return 1.99; }
   
   static const size_t PageConst = 4096;
   size_t SamplePerInputFile() const { return MaxFileSize() / CompactSampleConst() / PageConst; }

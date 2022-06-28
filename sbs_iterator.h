@@ -264,15 +264,11 @@ struct SBSIterator : public Printable {
     if (only_seek_next) {
       assert(Current().height_ == 0);
       for (; Valid(); Next()) {
-        BFile* a = Current().node_->GetLevel(0)->buffer_.GetOne();
-        if (a && a->Min().compare(key) > 0) {
-          std::cout << key.ToString() << "<" << a->Min().ToString() << std::endl;
-          fflush(stdout);
-          assert(!a || a->Min().compare(key) <= 0);
-        }
+        Slice a = Current().node_->Guard();
+        assert(a.compare(key) <= 0);
         SBSNode* next = Current().Next();
-        BFile* b = next ? next->GetLevel(0)->buffer_.GetOne() : nullptr;
-        if (!b || key.compare(b->Min()) < 0) 
+        Slice b = next ? next->Guard() : Slice();
+        if (!next || key.compare(b) < 0) 
           return;
       }
     } else {
@@ -282,7 +278,6 @@ struct SBSIterator : public Printable {
         SeekToFirst(0);
         //Dive(Current().height_);
       }
-      SeekKeySpace(key, true);
     }
   }
   bool SeekCurrentPrev(std::vector<SBSNode*>& prev) {
@@ -691,8 +686,8 @@ struct SBSIterator : public Printable {
         double rsize = (*gtable)[BytePerKey];
         assert(rsize > 0);
         double B = page_size;
-        double p = 0.01;
-        double q = 0.7;
+        double p = 0.001;
+        double q = 560;
         
         double T = width;
         if (T < options.MinWidth() && height >= 3 && Current().node_->IsHead())
