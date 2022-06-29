@@ -687,18 +687,18 @@ struct SBSIterator : public Printable {
         assert(rsize > 0);
         double B = page_size;
         double p = 0.001;
-        double q = 560;
+        double q = 10;
         
         double T = width;
         if (T < options.MinWidth() && height >= 3 && Current().node_->IsHead())
           T = Current().node_->GeneralWidth(height, 2);
-        double base_wcost = 2 * 1 * ((alpha + (height == 1 ? 1 : 0)) * T) * write * rsize;
-        double base_rcost = B * q * (p * get + iter);
+        double base_wcost = ((alpha + (height == 1 ? 1 : 0)) * T) * write * rsize;
+        double base_rcost = B * q * (p * get + iter) / 2;
         
         size_t max_runs = T; 
         table[HoleFileCapacity] = 100; 
         for (size_t i = 2; i <= max_runs; ++i) {
-          double v = base_wcost / i / (i + 1) - base_rcost;
+          double v = base_wcost / i / (i + 1) - base_rcost * (2 * i + 0.5);
           if (v <= 0) break;
           market->emplace_back(Current(), v);
         }

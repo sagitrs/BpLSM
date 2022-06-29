@@ -75,7 +75,7 @@ struct SBSNodeOptions {
 struct StatisticsOptions {
  private:
   static leveldb::Env* TimerEnv() { return leveldb::Env::Default(); }
-  size_t time_slice_ = 10 * 1000 * 1000;
+  size_t time_slice_ = 5 * 1000 * 1000;
   size_t time_count_ = 10;
   size_t time_slice_before_merge_ = 2;
   double B = 0.1, I = 0.9, D = 0.0;
@@ -155,7 +155,7 @@ struct SBSOptions : public SBSNodeOptions,
   
   size_t level0_compaction_size_ = 8;
   inline size_t Level0CompactionSize() const { return level0_compaction_size_; }
-  inline double SlowDownScore() const { return 1.7; }
+  inline double SlowDownScore() const { return 1.85; }
   inline double StopScore() const { return 1.99; }
   
   static const size_t PageConst = 4096;
