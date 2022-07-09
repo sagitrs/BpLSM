@@ -687,7 +687,7 @@ struct SBSIterator : public Printable {
         assert(rsize > 0);
         double B = page_size;
         double p = 0.001;
-        double q = 10;
+        double q = 0.5;
         
         double T = width;
         if (T < options.MinWidth() && height >= 3 && Current().node_->IsHead())
